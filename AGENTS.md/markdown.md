@@ -61,4 +61,37 @@ markdown
 - 禁止修改 .gitignore、.git/ 相关任何东西
 - 禁止跑 git push
 - 禁止在没有开发者确认的情况下执行任何破坏性命令(rm -rf、git reset --hard 等)
+
+
+从现在开始，所有代码必须加详细中文注释，要求：
+
+1. 【语法注释】我只会 Java，不熟悉 Kotlin。遇到以下 Kotlin 语法时必须注释说明：
+   - data class（对比 Java 的 POJO/Bean）
+   - sealed interface / sealed class（对比 Java 的枚举或抽象类）
+   - suspend fun（对比 Java 的回调或 Future）
+   - Flow<T>（对比 Java 的 Observable 或 Stream）
+   - by lazy / by inject
+   - 扩展函数
+   - 作用域函数（let、apply、also、run、with）
+   - 尾随 lambda、it 关键字
+   - ?. 和 ?: 安全调用
+   - object 单例
+   - companion object（对比 Java 的 static）
+
+2. 【设计意图注释】每个类/函数/关键代码块前写一段"为什么这样写"，不要写"做了什么"（代码本身已经表达了做什么）。
+
+3. 【注释格式】
+   // [语法] 这是 Kotlin 的 xxx，相当于 Java 的 xxx
+   // [设计] 为什么这样写：xxx
+
+示例：
+​```kotlin
+// [语法] data class 相当于 Java 的 POJO，自动生成 equals/hashCode/toString/copy
+// [设计] 用不可变 data class 表示 UI 状态，保证 Compose 能正确检测状态变化触发重组
+data class FileListState(
+    val files: List<CloudFileUiModel> = emptyList(),
+    // [语法] ?: 是 Kotlin 空安全语法，String? 表示可以为 null，相当于 Java 的 @Nullable String
+    val errorMessage: String? = null
+)
+​```
 ```
