@@ -78,4 +78,8 @@ sealed interface FileListIntent {
     // [语法] data class 用来携带 fileId，相当于 Java 里一个只保存 fileId 字段的事件对象。
     // [设计] 为什么这样写：选择状态必须由 ViewModel 统一切换，UI 只表达“这个文件被点了”，避免 Composable 自己维护局部选择状态。
     data class ToggleFileSelection(val fileId: String) : FileListIntent
+
+    // [语法] data object 是无参数单例事件，类似 Java enum 里的 TOGGLE_SELECT_ALL_VISIBLE。
+    // [设计] 为什么这样写：全选必须由 ViewModel 基于当前可见列表计算，避免 UI 把筛选/排序后的列表规则复制一份。
+    data object ToggleSelectAllVisible : FileListIntent
 }

@@ -87,23 +87,27 @@ class FileListViewModel @Inject constructor(
             }
             is FileListIntent.ChangeFilter -> {
                 _state.update { currentState ->
+                    val nextFiles = currentFolderFiles.toVisibleFiles(
+                        filter = intent.filter,
+                        sortType = currentState.sortType
+                    )
                     currentState.copy(
                         filter = intent.filter,
-                        files = currentFolderFiles.toVisibleFiles(
-                            filter = intent.filter,
-                            sortType = currentState.sortType
-                        )
+                        files = nextFiles,
+                        selectedFileIds = currentState.selectedFileIds.keepOnlyVisible(nextFiles)
                     )
                 }
             }
             is FileListIntent.ChangeSort -> {
                 _state.update { currentState ->
+                    val nextFiles = currentFolderFiles.toVisibleFiles(
+                        filter = currentState.filter,
+                        sortType = intent.sortType
+                    )
                     currentState.copy(
                         sortType = intent.sortType,
-                        files = currentFolderFiles.toVisibleFiles(
-                            filter = currentState.filter,
-                            sortType = intent.sortType
-                        )
+                        files = nextFiles,
+                        selectedFileIds = currentState.selectedFileIds.keepOnlyVisible(nextFiles)
                     )
                 }
             }
@@ -133,6 +137,24 @@ class FileListViewModel @Inject constructor(
                         currentState.selectedFileIds - intent.fileId
                     } else {
                         currentState.selectedFileIds + intent.fileId
+                    }
+                    currentState.copy(
+                        isManageMode = true,
+                        selectedFileIds = nextSelectedFileIds
+                    )
+                }
+            }
+            FileListIntent.ToggleSelectAllVisible -> {
+                _state.update { currentState ->
+                    val visibleFileIds = currentState.files.map { file -> file.fileId }.toSet()
+                    // [语法] all 是 Kotlin 集合函数，相当于 Java Stream 的 allMatch。
+                    // [设计] 为什么这样写：全选只针对当前可见列表；如果已经全部选中，再次点击就只取消当前可见项。
+                    val isAllVisibleSelected = visibleFileIds.isNotEmpty() &&
+                        visibleFileIds.all { fileId -> fileId in currentState.selectedFileIds }
+                    val nextSelectedFileIds = if (isAllVisibleSelected) {
+                        currentState.selectedFileIds - visibleFileIds
+                    } else {
+                        currentState.selectedFileIds + visibleFileIds
                     }
                     currentState.copy(
                         isManageMode = true,
@@ -174,11 +196,13 @@ class FileListViewModel @Inject constructor(
                 fileRepository.observeFiles(parentId = folderId).collect { files ->
                     currentFolderFiles = files
                     _state.update { currentState ->
+                        val nextFiles = currentFolderFiles.toVisibleFiles(
+                            filter = currentState.filter,
+                            sortType = currentState.sortType
+                        )
                         currentState.copy(
-                            files = currentFolderFiles.toVisibleFiles(
-                                filter = currentState.filter,
-                                sortType = currentState.sortType
-                            ),
+                            files = nextFiles,
+                            selectedFileIds = currentState.selectedFileIds.keepOnlyVisible(nextFiles),
                             isLoading = false,
                             errorMessage = null,
                             initializedFromMock = currentState.initializedFromMock || insertedMock
@@ -194,6 +218,13 @@ class FileListViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // [语法] 这是 Set<String> 的扩展函数，相当于 Java 静态工具方法 SelectionFilters.keepOnlyVisible(selectedIds, files)。
+    // [设计] 为什么这样写：筛选、排序或 Room 刷新后，选中集合只保留当前可见文件，避免后续操作误作用到用户看不见的文件。
+    private fun Set<String>.keepOnlyVisible(visibleFiles: List<CloudFile>): Set<String> {
+        val visibleFileIds = visibleFiles.map { file -> file.fileId }.toSet()
+        return intersect(visibleFileIds)
     }
 
     // [语法] 这是 List<CloudFile> 的扩展函数，相当于 Java 静态工具方法 FileListDeriver.toVisibleFiles(files, filter, sortType)。

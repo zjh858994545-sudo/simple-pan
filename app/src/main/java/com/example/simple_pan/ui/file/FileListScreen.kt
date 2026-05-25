@@ -72,6 +72,9 @@ fun FileListScreen(
         },
         onToggleFileSelection = { file ->
             viewModel.onIntent(FileListIntent.ToggleFileSelection(file.fileId))
+        },
+        onToggleSelectAllVisible = {
+            viewModel.onIntent(FileListIntent.ToggleSelectAllVisible)
         }
     )
 }
@@ -86,7 +89,8 @@ private fun FileListContent(
     onFilterChange: (FileFilter) -> Unit,
     onEnterManageMode: () -> Unit,
     onExitManageMode: () -> Unit,
-    onToggleFileSelection: (CloudFile) -> Unit
+    onToggleFileSelection: (CloudFile) -> Unit,
+    onToggleSelectAllVisible: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -99,9 +103,14 @@ private fun FileListContent(
                 fileCount = state.files.size,
                 canBackToParent = state.folderStack.isNotEmpty(),
                 isManageMode = state.isManageMode,
+                selectedCount = state.selectedFileIds.size,
+                canSelectAllVisible = state.files.isNotEmpty(),
+                isAllVisibleSelected = state.files.isNotEmpty() &&
+                    state.files.all { file -> file.fileId in state.selectedFileIds },
                 onBackToParent = onBackToParent,
                 onEnterManageMode = onEnterManageMode,
-                onExitManageMode = onExitManageMode
+                onExitManageMode = onExitManageMode,
+                onToggleSelectAllVisible = onToggleSelectAllVisible
             )
             Spacer(modifier = Modifier.height(12.dp))
             FileFilterBar(
@@ -174,9 +183,13 @@ private fun FileListHeader(
     fileCount: Int,
     canBackToParent: Boolean,
     isManageMode: Boolean,
+    selectedCount: Int,
+    canSelectAllVisible: Boolean,
+    isAllVisibleSelected: Boolean,
     onBackToParent: () -> Unit,
     onEnterManageMode: () -> Unit,
-    onExitManageMode: () -> Unit
+    onExitManageMode: () -> Unit,
+    onToggleSelectAllVisible: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (canBackToParent) {
@@ -207,6 +220,28 @@ private fun FileListHeader(
                 onClick = if (isManageMode) onExitManageMode else onEnterManageMode
             ) {
                 Text(text = if (isManageMode) "完成" else "管理")
+            }
+        }
+        if (isManageMode) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = "已选择 $selectedCount 项",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                // [设计] 为什么这样写：全选按钮跟随当前可见列表状态切换文案，用户能一眼知道下一次点击会执行什么动作。
+                Button(
+                    onClick = onToggleSelectAllVisible,
+                    enabled = canSelectAllVisible
+                ) {
+                    Text(text = if (isAllVisibleSelected) "取消全选" else "全选")
+                }
             }
         }
     }
