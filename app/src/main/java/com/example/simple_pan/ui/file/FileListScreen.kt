@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -239,23 +240,75 @@ private fun FileRow(
     )
 }
 
-// [设计] 为什么这样写：当前阶段不额外引入图标库，用短文本徽标表达类型；后续接入设计系统时可以集中替换。
+// [设计] 为什么这样写：当前阶段不额外引入图标依赖，用固定宽度的类型徽章表达“图标/标识”，既能演示类型差异，也不会破坏依赖约束。
 @Composable
 private fun FileTypeBadge(fileType: FileType) {
+    val badge = fileType.toBadgeSpec()
     Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.width(48.dp),
+        color = badge.containerColor,
+        contentColor = badge.contentColor,
         shape = MaterialTheme.shapes.small
     ) {
-        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.Center
+        ) {
             Text(
-                text = fileType.toShortLabel(),
+                text = badge.shortLabel,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold
             )
         }
     }
     Spacer(modifier = Modifier.width(8.dp))
+}
+
+// [语法] data class 相当于 Java 的 POJO/Bean，自动生成 equals/hashCode/toString/copy，适合承载 UI 徽章需要的几个值。
+// [设计] 为什么这样写：类型徽章不仅需要文字，还需要配色；集中成一个对象，FileTypeBadge 不需要写一堆分散的 when。
+private data class FileTypeBadgeSpec(
+    val shortLabel: String,
+    val containerColor: Color,
+    val contentColor: Color
+)
+
+// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toBadgeSpec(fileType, colorScheme)。
+// [设计] 为什么这样写：文件类型到视觉标识的映射集中在一处，后续如果换成真实图标，只需要替换这里和 FileTypeBadge。
+@Composable
+private fun FileType.toBadgeSpec(): FileTypeBadgeSpec {
+    val colorScheme = MaterialTheme.colorScheme
+    return when (this) {
+        FileType.Folder -> FileTypeBadgeSpec(
+            shortLabel = "DIR",
+            containerColor = colorScheme.primaryContainer,
+            contentColor = colorScheme.onPrimaryContainer
+        )
+        FileType.Video -> FileTypeBadgeSpec(
+            shortLabel = "MP4",
+            containerColor = colorScheme.tertiaryContainer,
+            contentColor = colorScheme.onTertiaryContainer
+        )
+        FileType.Txt -> FileTypeBadgeSpec(
+            shortLabel = "TXT",
+            containerColor = colorScheme.secondaryContainer,
+            contentColor = colorScheme.onSecondaryContainer
+        )
+        FileType.Image -> FileTypeBadgeSpec(
+            shortLabel = "IMG",
+            containerColor = colorScheme.surfaceVariant,
+            contentColor = colorScheme.onSurfaceVariant
+        )
+        FileType.Audio -> FileTypeBadgeSpec(
+            shortLabel = "AUD",
+            containerColor = colorScheme.inversePrimary,
+            contentColor = colorScheme.onPrimaryContainer
+        )
+        FileType.Other -> FileTypeBadgeSpec(
+            shortLabel = "FILE",
+            containerColor = colorScheme.surfaceVariant,
+            contentColor = colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 // [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toDisplayName(fileType)。
@@ -268,19 +321,6 @@ private fun FileType.toDisplayName(): String {
         FileType.Image -> "图片"
         FileType.Audio -> "音频"
         FileType.Other -> "其他"
-    }
-}
-
-// [语法] 这是扩展函数，给 FileType 增加 UI 短标签能力；Java 里通常会写成工具类静态方法。
-// [设计] 为什么这样写：短标签只服务当前列表视觉，不进入 domain 模型，避免领域层混入 UI 文案。
-private fun FileType.toShortLabel(): String {
-    return when (this) {
-        FileType.Folder -> "夹"
-        FileType.Video -> "视"
-        FileType.Txt -> "文"
-        FileType.Image -> "图"
-        FileType.Audio -> "音"
-        FileType.Other -> "其"
     }
 }
 
