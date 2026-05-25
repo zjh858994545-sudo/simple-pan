@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,8 +22,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -75,6 +78,18 @@ fun FileListScreen(
         },
         onToggleSelectAllVisible = {
             viewModel.onIntent(FileListIntent.ToggleSelectAllVisible)
+        },
+        onOpenRenameDialog = {
+            viewModel.onIntent(FileListIntent.OpenRenameDialog)
+        },
+        onDismissRenameDialog = {
+            viewModel.onIntent(FileListIntent.DismissRenameDialog)
+        },
+        onRenameInputChange = { inputName ->
+            viewModel.onIntent(FileListIntent.ChangeRenameInput(inputName))
+        },
+        onConfirmRename = {
+            viewModel.onIntent(FileListIntent.ConfirmRename)
         }
     )
 }
@@ -90,7 +105,11 @@ private fun FileListContent(
     onEnterManageMode: () -> Unit,
     onExitManageMode: () -> Unit,
     onToggleFileSelection: (CloudFile) -> Unit,
-    onToggleSelectAllVisible: () -> Unit
+    onToggleSelectAllVisible: () -> Unit,
+    onOpenRenameDialog: () -> Unit,
+    onDismissRenameDialog: () -> Unit,
+    onRenameInputChange: (String) -> Unit,
+    onConfirmRename: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -146,7 +165,16 @@ private fun FileListContent(
                     onShareClick = {},
                     onDeleteClick = {},
                     onMoveClick = {},
-                    onRenameClick = {}
+                    onRenameClick = onOpenRenameDialog
+                )
+            }
+
+            if (state.renameDialog.isVisible) {
+                RenameFileDialog(
+                    dialogState = state.renameDialog,
+                    onNameChange = onRenameInputChange,
+                    onDismiss = onDismissRenameDialog,
+                    onConfirm = onConfirmRename
                 )
             }
         }
@@ -226,6 +254,82 @@ private fun FileManageActionButton(
             style = MaterialTheme.typography.labelMedium
         )
     }
+}
+
+// [设计] 为什么这样写：弹窗只展示和收集输入，不直接访问 Repository；重命名校验和写库统一回到 ViewModel，保持 MVI 数据流清晰。
+@Composable
+private fun RenameFileDialog(
+    dialogState: RenameDialogState,
+    onNameChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!dialogState.isSubmitting) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(text = "重命名")
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "原名称：${dialogState.originalName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier.weight(1f),
+                        value = dialogState.editableName,
+                        onValueChange = onNameChange,
+                        enabled = !dialogState.isSubmitting,
+                        singleLine = true,
+                        isError = dialogState.errorMessage != null,
+                        label = {
+                            Text(text = "名称")
+                        },
+                        supportingText = {
+                            if (dialogState.errorMessage != null) {
+                                Text(text = dialogState.errorMessage)
+                            }
+                        }
+                    )
+                    if (dialogState.preservedExtension.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            modifier = Modifier.padding(top = 18.dp),
+                            text = dialogState.preservedExtension,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onConfirm
+            ) {
+                Text(text = if (dialogState.isSubmitting) "处理中" else "确定")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onDismiss
+            ) {
+                Text(text = "取消")
+            }
+        }
+    )
 }
 
 // [设计] 为什么这样写：筛选栏放在列表页顶部，用户能在当前目录内快速切换全部/图片/视频/文档；筛选动作仍回到 ViewModel 处理。

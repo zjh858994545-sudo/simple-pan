@@ -162,6 +162,128 @@ class FileListViewModel @Inject constructor(
                     )
                 }
             }
+            FileListIntent.OpenRenameDialog -> {
+                val currentState = _state.value
+                // [语法] singleOrNull() 会在集合只有一个元素时返回它，否则返回 null，相当于 Java 里先判断 size == 1。
+                // [设计] 为什么这样写：重命名只允许单选，ViewModel 再兜底一次，避免 UI 状态异常时打开错误目标。
+                val selectedFileId = currentState.selectedFileIds.singleOrNull()
+                val targetFile = currentState.files.firstOrNull { file -> file.fileId == selectedFileId }
+                if (targetFile != null) {
+                    _state.update { state ->
+                        state.copy(
+                            renameDialog = RenameDialogState(
+                                isVisible = true,
+                                fileId = targetFile.fileId,
+                                originalName = targetFile.name,
+                                editableName = targetFile.toEditableRenameName(),
+                                preservedExtension = targetFile.toPreservedExtension()
+                            )
+                        )
+                    }
+                }
+            }
+            FileListIntent.DismissRenameDialog -> {
+                _state.update { currentState ->
+                    currentState.copy(renameDialog = RenameDialogState())
+                }
+            }
+            is FileListIntent.ChangeRenameInput -> {
+                _state.update { currentState ->
+                    currentState.copy(
+                        renameDialog = currentState.renameDialog.copy(
+                            editableName = intent.inputName,
+                            errorMessage = null
+                        )
+                    )
+                }
+            }
+            FileListIntent.ConfirmRename -> {
+                confirmRename()
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：确认重命名包含校验、查库和写库，集中在 ViewModel 能保持 UI 弹窗足够薄，也让 MVI 状态变化可追踪。
+    private fun confirmRename() {
+        val dialog = _state.value.renameDialog
+        val fileId = dialog.fileId ?: return
+        val trimmedEditableName = dialog.editableName.trim()
+
+        if (trimmedEditableName.isBlank()) {
+            _state.update { currentState ->
+                currentState.copy(
+                    renameDialog = currentState.renameDialog.copy(
+                        errorMessage = "名称不能为空"
+                    )
+                )
+            }
+            return
+        }
+
+        val finalName = trimmedEditableName + dialog.preservedExtension
+        _state.update { currentState ->
+            currentState.copy(
+                renameDialog = currentState.renameDialog.copy(
+                    errorMessage = null,
+                    isSubmitting = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val activeFile = fileRepository.findActiveFile(fileId)
+                if (activeFile == null) {
+                    showRenameError("文件不存在或已被删除")
+                    return@launch
+                }
+
+                val hasDuplicateName = fileRepository.hasActiveNameInFolder(
+                    parentId = activeFile.parentId,
+                    name = finalName,
+                    excludeFileId = activeFile.fileId
+                )
+                if (hasDuplicateName) {
+                    showRenameError("当前目录已存在同名文件")
+                    return@launch
+                }
+
+                val renamed = if (finalName == activeFile.name) {
+                    true
+                } else {
+                    fileRepository.renameFile(
+                        fileId = activeFile.fileId,
+                        newName = finalName,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                }
+
+                if (renamed) {
+                    _state.update { currentState ->
+                        currentState.copy(
+                            renameDialog = RenameDialogState(),
+                            isManageMode = false,
+                            selectedFileIds = emptySet()
+                        )
+                    }
+                } else {
+                    showRenameError("重命名失败，请重试")
+                }
+            } catch (throwable: Throwable) {
+                showRenameError(throwable.toUserMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：重命名错误只显示在弹窗里，不污染页面级 errorMessage，避免列表被错误页替换。
+    private fun showRenameError(message: String) {
+        _state.update { currentState ->
+            currentState.copy(
+                renameDialog = currentState.renameDialog.copy(
+                    errorMessage = message,
+                    isSubmitting = false
+                )
+            )
         }
     }
 
@@ -225,6 +347,31 @@ class FileListViewModel @Inject constructor(
     private fun Set<String>.keepOnlyVisible(visibleFiles: List<CloudFile>): Set<String> {
         val visibleFileIds = visibleFiles.map { file -> file.fileId }.toSet()
         return intersect(visibleFileIds)
+    }
+
+    // [语法] 这是 CloudFile 的扩展函数，相当于 Java 静态工具方法 RenameNames.toEditableRenameName(file)。
+    // [设计] 为什么这样写：弹窗只允许编辑基础名，扩展名由 preservedExtension 保留，避免用户把 .txt/.mp4 等后缀改丢。
+    private fun CloudFile.toEditableRenameName(): String {
+        val extension = toPreservedExtension()
+        return if (extension.isEmpty()) {
+            name
+        } else {
+            name.removeSuffix(extension)
+        }
+    }
+
+    // [语法] 这是 CloudFile 的扩展函数；lastIndexOf 返回最后一个点号位置，和 Java String.lastIndexOf 类似。
+    // [设计] 为什么这样写：只有普通文件保留最后一段扩展名，文件夹和无扩展名文件不强行制造后缀。
+    private fun CloudFile.toPreservedExtension(): String {
+        if (type == FileType.Folder) {
+            return ""
+        }
+        val dotIndex = name.lastIndexOf('.')
+        return if (dotIndex > 0 && dotIndex < name.lastIndex) {
+            name.substring(dotIndex)
+        } else {
+            ""
+        }
     }
 
     // [语法] 这是 List<CloudFile> 的扩展函数，相当于 Java 静态工具方法 FileListDeriver.toVisibleFiles(files, filter, sortType)。

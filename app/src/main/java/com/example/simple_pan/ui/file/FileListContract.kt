@@ -24,6 +24,20 @@ data class FolderCrumb(
     val folderName: String
 )
 
+// [语法] data class 相当于 Java 的 POJO/Bean，适合承载弹窗所需的一组不可变 UI 状态。
+// [设计] 为什么这样写：重命名弹窗有输入值、扩展名、错误提示和提交中状态，集中到 State 里能让 UI 只负责展示，不自己保存临时变量。
+data class RenameDialogState(
+    val isVisible: Boolean = false,
+    // [语法] String? 表示可能没有目标文件，相当于 Java 的 @Nullable String。
+    // [设计] 为什么这样写：弹窗关闭时没有重命名目标，用 null 明确表达“当前无目标”。
+    val fileId: String? = null,
+    val originalName: String = "",
+    val editableName: String = "",
+    val preservedExtension: String = "",
+    val errorMessage: String? = null,
+    val isSubmitting: Boolean = false
+)
+
 // [语法] data class 相当于 Java 的 POJO/Bean，Kotlin 会自动生成 equals/hashCode/toString/copy。
 // [设计] 为什么这样写：文件列表页用一个不可变 State 表达 loading、empty、error 和列表数据，Compose 只根据 State 重组，不在 UI 里手动刷新。
 data class FileListState(
@@ -43,6 +57,7 @@ data class FileListState(
     val isLoading: Boolean = true,
     // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null 表示。
     val errorMessage: String? = null,
+    val renameDialog: RenameDialogState = RenameDialogState(),
     val initializedFromMock: Boolean = false
 )
 
@@ -82,4 +97,18 @@ sealed interface FileListIntent {
     // [语法] data object 是无参数单例事件，类似 Java enum 里的 TOGGLE_SELECT_ALL_VISIBLE。
     // [设计] 为什么这样写：全选必须由 ViewModel 基于当前可见列表计算，避免 UI 把筛选/排序后的列表规则复制一份。
     data object ToggleSelectAllVisible : FileListIntent
+
+    // [设计] 为什么这样写：打开重命名弹窗要由 ViewModel 根据选中集合决定目标文件，UI 不自己挑文件。
+    data object OpenRenameDialog : FileListIntent
+
+    // [设计] 为什么这样写：关闭弹窗要清空临时输入和错误信息，集中在 ViewModel 里避免 UI 漏清状态。
+    data object DismissRenameDialog : FileListIntent
+
+    // [语法] data class 用来携带输入框内容，相当于 Java 事件对象 RenameInputChanged。
+    // [设计] 为什么这样写：输入框内容也走 Intent，空名错误可以在用户继续输入时自然清掉。
+    data class ChangeRenameInput(val inputName: String) : FileListIntent
+
+    // [语法] data object 表示无参数提交动作，类似 Java enum 里的 CONFIRM_RENAME。
+    // [设计] 为什么这样写：确认按钮只表达用户提交，具体空名、重名、写库逻辑留给 ViewModel。
+    data object ConfirmRename : FileListIntent
 }
