@@ -52,6 +52,9 @@ fun FileListScreen(
                     folderName = folder.name
                 )
             )
+        },
+        onBackToParent = {
+            viewModel.onIntent(FileListIntent.BackToParent)
         }
     )
 }
@@ -61,7 +64,8 @@ fun FileListScreen(
 private fun FileListContent(
     state: FileListState,
     onRetry: () -> Unit,
-    onFolderClick: (CloudFile) -> Unit
+    onFolderClick: (CloudFile) -> Unit,
+    onBackToParent: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -71,7 +75,9 @@ private fun FileListContent(
         ) {
             FileListHeader(
                 folderName = state.currentFolderName,
-                fileCount = state.files.size
+                fileCount = state.files.size,
+                canBackToParent = state.folderStack.isNotEmpty(),
+                onBackToParent = onBackToParent
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -95,23 +101,34 @@ private fun FileListContent(
 @Composable
 private fun FileListHeader(
     folderName: String,
-    fileCount: Int
+    fileCount: Int,
+    canBackToParent: Boolean,
+    onBackToParent: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = folderName,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "$fileCount 项",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (canBackToParent) {
+            // [设计] 为什么这样写：先做页面内返回按钮，不接系统返回键，符合本步骤“小而可验收”的边界。
+            Button(onClick = onBackToParent) {
+                Text(text = "返回上一级")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = folderName,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "$fileCount 项",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

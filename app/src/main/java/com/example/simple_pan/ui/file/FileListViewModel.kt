@@ -62,8 +62,23 @@ class FileListViewModel @Inject constructor(
                 )
             }
             FileListIntent.BackToParent -> {
-                _state.update { currentState ->
-                    currentState.copy(errorMessage = null)
+                val currentState = _state.value
+                // [语法] lastOrNull() 是 Kotlin 标准库函数，相当于 Java 里先判断 list 是否为空再取最后一个，避免空列表异常。
+                // [设计] 为什么这样写：返回上一级的目标必须由 ViewModel 根据路径栈决定，UI 只表达“我要返回”这个意图。
+                val parentCrumb = currentState.folderStack.lastOrNull()
+                if (parentCrumb != null) {
+                    loadFiles(
+                        folderId = parentCrumb.folderId,
+                        folderName = parentCrumb.folderName,
+                        // [语法] dropLast(1) 会生成去掉最后一个元素的新列表，不修改原列表。
+                        // [设计] 为什么这样写：路径栈保持不可变更新，StateFlow 才能清楚表达“路径发生变化”。
+                        folderStack = currentState.folderStack.dropLast(1),
+                        shouldInitializeMock = false
+                    )
+                } else {
+                    _state.update { state ->
+                        state.copy(errorMessage = null)
+                    }
                 }
             }
             is FileListIntent.ChangeFilter -> {
