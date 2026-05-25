@@ -33,6 +33,27 @@ class FileListViewModel @Inject constructor(
     fun onIntent(intent: FileListIntent) {
         when (intent) {
             FileListIntent.Retry -> loadRootFiles()
+            is FileListIntent.EnterFolder -> {
+                // [设计] 为什么这样写：第 1 步只扩展 MVI 入口，真正切换 observeFiles(parentId) 留到下一小步，避免一个步骤塞入行为改动。
+                _state.update { currentState ->
+                    currentState.copy(errorMessage = null)
+                }
+            }
+            FileListIntent.BackToParent -> {
+                _state.update { currentState ->
+                    currentState.copy(errorMessage = null)
+                }
+            }
+            is FileListIntent.ChangeFilter -> {
+                _state.update { currentState ->
+                    currentState.copy(filter = intent.filter)
+                }
+            }
+            is FileListIntent.ChangeSort -> {
+                _state.update { currentState ->
+                    currentState.copy(sortType = intent.sortType)
+                }
+            }
         }
     }
 
