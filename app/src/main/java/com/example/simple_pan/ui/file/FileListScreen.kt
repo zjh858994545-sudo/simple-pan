@@ -121,22 +121,110 @@ private fun FileListContent(
             FileSortSummary(sortType = state.sortType)
             Spacer(modifier = Modifier.height(12.dp))
 
-            when {
-                state.isLoading -> FileListLoading()
-                state.errorMessage != null -> FileListError(
-                    message = state.errorMessage,
-                    onRetry = onRetry
-                )
-                state.files.isEmpty() -> FileListEmpty(filter = state.filter)
-                else -> FileListItems(
-                    files = state.files,
-                    isManageMode = state.isManageMode,
-                    selectedFileIds = state.selectedFileIds,
-                    onFolderClick = onFolderClick,
-                    onToggleFileSelection = onToggleFileSelection
+            // [设计] 为什么这样写：列表区域用 weight 占据剩余空间，管理态底部操作栏才能稳定固定在底部，不会被 LazyColumn 撑出屏幕。
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    state.isLoading -> FileListLoading()
+                    state.errorMessage != null -> FileListError(
+                        message = state.errorMessage,
+                        onRetry = onRetry
+                    )
+                    state.files.isEmpty() -> FileListEmpty(filter = state.filter)
+                    else -> FileListItems(
+                        files = state.files,
+                        isManageMode = state.isManageMode,
+                        selectedFileIds = state.selectedFileIds,
+                        onFolderClick = onFolderClick,
+                        onToggleFileSelection = onToggleFileSelection
+                    )
+                }
+            }
+
+            if (state.isManageMode) {
+                FileManageActionBar(
+                    selectedCount = state.selectedFileIds.size,
+                    onShareClick = {},
+                    onDeleteClick = {},
+                    onMoveClick = {},
+                    onRenameClick = {}
                 )
             }
         }
+    }
+}
+
+// [设计] 为什么这样写：底部操作栏只依赖 selectedCount，就能先完成管理态交互骨架；真正的分享/删除/移动/重命名逻辑留给后续步骤分别接入。
+@Composable
+private fun FileManageActionBar(
+    selectedCount: Int,
+    onShareClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onMoveClick: () -> Unit,
+    onRenameClick: () -> Unit
+) {
+    val hasSelection = selectedCount > 0
+    val canRename = selectedCount == 1
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FileManageActionButton(
+                    modifier = Modifier.weight(1f),
+                    text = "分享",
+                    enabled = hasSelection,
+                    onClick = onShareClick
+                )
+                FileManageActionButton(
+                    modifier = Modifier.weight(1f),
+                    text = "删除",
+                    enabled = hasSelection,
+                    onClick = onDeleteClick
+                )
+                FileManageActionButton(
+                    modifier = Modifier.weight(1f),
+                    text = "移动",
+                    enabled = hasSelection,
+                    onClick = onMoveClick
+                )
+                FileManageActionButton(
+                    modifier = Modifier.weight(1f),
+                    text = "重命名",
+                    enabled = canRename,
+                    onClick = onRenameClick
+                )
+            }
+        }
+    }
+}
+
+// [设计] 为什么这样写：四个操作按钮共享同一套尺寸和文字样式，后续接入真实动作时只改回调，不改布局规则。
+@Composable
+private fun FileManageActionButton(
+    modifier: Modifier,
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        modifier = modifier,
+        enabled = enabled,
+        onClick = onClick
+    ) {
+        Text(
+            text = text,
+            maxLines = 1,
+            style = MaterialTheme.typography.labelMedium
+        )
     }
 }
 
