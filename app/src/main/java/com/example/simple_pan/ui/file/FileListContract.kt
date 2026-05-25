@@ -74,4 +74,8 @@ sealed interface FileListIntent {
     // [语法] data object 是 Kotlin 的单例事件，适合表达“退出管理模式”这种无参数动作。
     // [设计] 为什么这样写：退出时必须同时清空选中状态，把规则收敛在 ViewModel，防止不同 UI 入口遗漏清理。
     data object ExitManageMode : FileListIntent
+
+    // [语法] data class 用来携带 fileId，相当于 Java 里一个只保存 fileId 字段的事件对象。
+    // [设计] 为什么这样写：选择状态必须由 ViewModel 统一切换，UI 只表达“这个文件被点了”，避免 Composable 自己维护局部选择状态。
+    data class ToggleFileSelection(val fileId: String) : FileListIntent
 }

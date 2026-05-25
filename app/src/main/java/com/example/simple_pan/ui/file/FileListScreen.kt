@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -69,8 +70,8 @@ fun FileListScreen(
         onExitManageMode = {
             viewModel.onIntent(FileListIntent.ExitManageMode)
         },
-        onFileLongClick = {
-            viewModel.onIntent(FileListIntent.EnterManageMode)
+        onToggleFileSelection = { file ->
+            viewModel.onIntent(FileListIntent.ToggleFileSelection(file.fileId))
         }
     )
 }
@@ -85,7 +86,7 @@ private fun FileListContent(
     onFilterChange: (FileFilter) -> Unit,
     onEnterManageMode: () -> Unit,
     onExitManageMode: () -> Unit,
-    onFileLongClick: (CloudFile) -> Unit
+    onToggleFileSelection: (CloudFile) -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -121,8 +122,9 @@ private fun FileListContent(
                 else -> FileListItems(
                     files = state.files,
                     isManageMode = state.isManageMode,
+                    selectedFileIds = state.selectedFileIds,
                     onFolderClick = onFolderClick,
-                    onFileLongClick = onFileLongClick
+                    onToggleFileSelection = onToggleFileSelection
                 )
             }
         }
@@ -267,8 +269,9 @@ private fun FileListEmpty(filter: FileFilter) {
 private fun FileListItems(
     files: List<CloudFile>,
     isManageMode: Boolean,
+    selectedFileIds: Set<String>,
     onFolderClick: (CloudFile) -> Unit,
-    onFileLongClick: (CloudFile) -> Unit
+    onToggleFileSelection: (CloudFile) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是显式命名参数，类似 Java 回调里的参数名。
@@ -279,8 +282,9 @@ private fun FileListItems(
             FileRow(
                 file = file,
                 isManageMode = isManageMode,
+                isSelected = file.fileId in selectedFileIds,
                 onFolderClick = onFolderClick,
-                onFileLongClick = onFileLongClick
+                onToggleFileSelection = onToggleFileSelection
             )
             HorizontalDivider()
         }
@@ -292,18 +296,21 @@ private fun FileListItems(
 private fun FileRow(
     file: CloudFile,
     isManageMode: Boolean,
+    isSelected: Boolean,
     onFolderClick: (CloudFile) -> Unit,
-    onFileLongClick: (CloudFile) -> Unit
+    onToggleFileSelection: (CloudFile) -> Unit
 ) {
     // [语法] pointerInput + detectTapGestures 类似 Java 里给 View 设置手势监听器，可以同时处理点击和长按。
-    // [设计] 为什么这样写：长按进入管理模式是阶段 3 的入口；管理态下先屏蔽文件夹点击，后续步骤再把点击改成勾选。
-    val rowModifier = Modifier.pointerInput(file.fileId, file.type, isManageMode) {
+    // [设计] 为什么这样写：普通态点击文件夹仍负责浏览；管理态点击整行切换选择，长按则进入管理态并选中当前文件。
+    val rowModifier = Modifier.pointerInput(file.fileId, file.type, isManageMode, isSelected) {
         detectTapGestures(
             onLongPress = {
-                onFileLongClick(file)
+                onToggleFileSelection(file)
             },
             onTap = {
-                if (!isManageMode && file.type == FileType.Folder) {
+                if (isManageMode) {
+                    onToggleFileSelection(file)
+                } else if (file.type == FileType.Folder) {
                     onFolderClick(file)
                 }
             }
@@ -326,6 +333,19 @@ private fun FileRow(
                 text = "${file.type.toDisplayName()} | ${file.sizeBytes.toSizeText()}",
                 maxLines = 1
             )
+        },
+        trailingContent = if (isManageMode) {
+            {
+                // [设计] 为什么这样写：管理态用系统 Checkbox 表达二元选择，视觉语义明确；状态仍由 selectedFileIds 驱动，避免控件自己记状态。
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = {
+                        onToggleFileSelection(file)
+                    }
+                )
+            }
+        } else {
+            null
         }
     )
 }

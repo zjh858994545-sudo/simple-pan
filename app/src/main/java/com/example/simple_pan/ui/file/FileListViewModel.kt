@@ -125,6 +125,21 @@ class FileListViewModel @Inject constructor(
                     )
                 }
             }
+            is FileListIntent.ToggleFileSelection -> {
+                _state.update { currentState ->
+                    // [语法] in 用来判断元素是否在集合中，类似 Java 的 selectedFileIds.contains(fileId)。
+                    // [设计] 为什么这样写：用不可变 Set 生成新集合，StateFlow 能明确发出新状态，Compose 也能稳定刷新对应行。
+                    val nextSelectedFileIds = if (intent.fileId in currentState.selectedFileIds) {
+                        currentState.selectedFileIds - intent.fileId
+                    } else {
+                        currentState.selectedFileIds + intent.fileId
+                    }
+                    currentState.copy(
+                        isManageMode = true,
+                        selectedFileIds = nextSelectedFileIds
+                    )
+                }
+            }
         }
     }
 
