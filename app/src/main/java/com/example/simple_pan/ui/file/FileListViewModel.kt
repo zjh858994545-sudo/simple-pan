@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 // [语法] @HiltViewModel 告诉 Hilt 这个 ViewModel 由依赖注入创建，类似 Java 项目里用 DI 容器创建 Controller/ViewModel。
 // [设计] 为什么这样写：ViewModel 依赖 domain 层 FileRepository 接口，不直接认识 Room、DAO 或 mock JSON，保持 UI 层边界干净。
@@ -88,13 +89,22 @@ class FileListViewModel @Inject constructor(
                 _state.update { currentState ->
                     currentState.copy(
                         filter = intent.filter,
-                        files = currentFolderFiles.applyFilter(intent.filter)
+                        files = currentFolderFiles.toVisibleFiles(
+                            filter = intent.filter,
+                            sortType = currentState.sortType
+                        )
                     )
                 }
             }
             is FileListIntent.ChangeSort -> {
                 _state.update { currentState ->
-                    currentState.copy(sortType = intent.sortType)
+                    currentState.copy(
+                        sortType = intent.sortType,
+                        files = currentFolderFiles.toVisibleFiles(
+                            filter = currentState.filter,
+                            sortType = intent.sortType
+                        )
+                    )
                 }
             }
         }
@@ -132,7 +142,10 @@ class FileListViewModel @Inject constructor(
                     currentFolderFiles = files
                     _state.update { currentState ->
                         currentState.copy(
-                            files = currentFolderFiles.applyFilter(currentState.filter),
+                            files = currentFolderFiles.toVisibleFiles(
+                                filter = currentState.filter,
+                                sortType = currentState.sortType
+                            ),
                             isLoading = false,
                             errorMessage = null,
                             initializedFromMock = currentState.initializedFromMock || insertedMock
@@ -150,6 +163,15 @@ class FileListViewModel @Inject constructor(
         }
     }
 
+    // [语法] 这是 List<CloudFile> 的扩展函数，相当于 Java 静态工具方法 FileListDeriver.toVisibleFiles(files, filter, sortType)。
+    // [设计] 为什么这样写：筛选和排序都是展示派生规则，统一在 ViewModel 里生成可见列表，UI 只渲染最终 State.files。
+    private fun List<CloudFile>.toVisibleFiles(
+        filter: FileFilter,
+        sortType: FileSortType
+    ): List<CloudFile> {
+        return applyFilter(filter).applySort(sortType)
+    }
+
     // [语法] 这是 List<CloudFile> 的扩展函数，相当于 Java 静态工具方法 FileFilters.applyFilter(files, filter)。
     // [设计] 为什么这样写：筛选规则放在 ViewModel 层，UI 只展示 State.files，不自己判断哪些文件该出现。
     private fun List<CloudFile>.applyFilter(filter: FileFilter): List<CloudFile> {
@@ -158,6 +180,19 @@ class FileListViewModel @Inject constructor(
             FileFilter.Image -> filter { file -> file.type == FileType.Image }
             FileFilter.Video -> filter { file -> file.type == FileType.Video }
             FileFilter.Document -> filter { file -> file.type == FileType.Txt }
+        }
+    }
+
+    // [语法] sortedWith + compareByDescending/thenBy 类似 Java Comparator 链式比较器，用多个字段依次决定顺序。
+    // [设计] 为什么这样写：综合排序是文件列表的默认产品规则，放在 ViewModel 可以保证筛选后、进入目录后都使用同一套稳定排序。
+    private fun List<CloudFile>.applySort(sortType: FileSortType): List<CloudFile> {
+        return when (sortType) {
+            FileSortType.Comprehensive -> sortedWith(
+                compareByDescending<CloudFile> { file -> file.type == FileType.Folder }
+                    .thenByDescending { file -> file.isPinned }
+                    .thenByDescending { file -> file.updatedAt }
+                    .thenBy { file -> file.name.lowercase(Locale.ROOT) }
+            )
         }
     }
 

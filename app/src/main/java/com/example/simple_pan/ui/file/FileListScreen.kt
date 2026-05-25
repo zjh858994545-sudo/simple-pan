@@ -91,6 +91,8 @@ private fun FileListContent(
                 selectedFilter = state.filter,
                 onFilterChange = onFilterChange
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            FileSortSummary(sortType = state.sortType)
             Spacer(modifier = Modifier.height(12.dp))
 
             when {
@@ -133,6 +135,16 @@ private fun FileFilterBar(
             )
         }
     }
+}
+
+// [设计] 为什么这样写：阶段 2 只要求综合排序，先显示当前排序规则而不做下拉菜单，避免提前引入更多排序状态。
+@Composable
+private fun FileSortSummary(sortType: FileSortType) {
+    Text(
+        text = "排序：${sortType.toDisplayName()}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 // [设计] 为什么这样写：头部展示当前目录名称和数量，让用户确认已经进入子目录；返回按钮留到下一步单独实现。
@@ -369,6 +381,14 @@ private fun FileFilter.toDisplayName(): String {
         FileFilter.Image -> "图片"
         FileFilter.Video -> "视频"
         FileFilter.Document -> "文档"
+    }
+}
+
+// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileSortTypeDisplay.toDisplayName(sortType)。
+// [设计] 为什么这样写：排序枚举只表达策略，具体文案放 UI 层，后续如果增加排序菜单也能复用。
+private fun FileSortType.toDisplayName(): String {
+    return when (this) {
+        FileSortType.Comprehensive -> "综合排序（文件夹优先 · 置顶优先 · 更新时间）"
     }
 }
 
