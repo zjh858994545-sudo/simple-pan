@@ -20,10 +20,23 @@ interface FileRepository {
     // [设计] 为什么这样写：一次性查询给打开文件、移动校验等业务使用，避免上层为了拿当前值去收集 Flow。
     suspend fun findActiveFile(fileId: String): CloudFile?
 
-    // [设计] 为什么这样写：重命名、移动、删除先提供 Repository 入口，后续 UseCase 只负责编排和校验，不直接访问 DAO。
+    // [设计] 为什么这样写：管理态通常拿到的是一组选中 id，Repository 提供批量查询可以避免 ViewModel 循环收集 Flow。
+    suspend fun findActiveFiles(fileIds: List<String>): List<CloudFile>
+
+    // [设计] 为什么这样写：重命名弹窗需要先判断同目录是否重名，把查询能力放在 Repository，UI 不直接碰 Room。
+    suspend fun hasActiveNameInFolder(parentId: String?, name: String, excludeFileId: String?): Boolean
+
+    // [设计] 为什么这样写：移动弹窗需要展示目标文件夹；Repository 返回领域模型，UI 不需要知道数据库里的 type 字符串。
+    suspend fun findActiveChildFolders(parentId: String?): List<CloudFile>
+
+    // [设计] 为什么这样写：移动校验要禁止移动到自身子目录，提前提供后代文件夹 id 查询，后续校验逻辑可以保持清晰。
+    suspend fun findActiveDescendantFolderIds(folderId: String): Set<String>
+
+    // [设计] 为什么这样写：重命名、移动、删除先提供 Repository 入口，后续弹窗只负责编排和校验，不直接访问 DAO。
     suspend fun renameFile(fileId: String, newName: String, updatedAt: Long): Boolean
 
     suspend fun moveFiles(fileIds: List<String>, targetParentId: String?, updatedAt: Long): Int
 
+    // [设计] 为什么这样写：删除文件夹时必须递归软删除子文件，统一放在 Repository 事务中，避免 UI 层遗漏子目录。
     suspend fun deleteFiles(fileIds: List<String>, deletedAt: Long): Int
 }

@@ -36,9 +36,38 @@ interface FileDao {
     @Query("SELECT * FROM file_entity WHERE file_id = :fileId AND is_deleted = 0 LIMIT 1")
     suspend fun findActiveFile(fileId: String): FileEntity?
 
-    // [设计] 为什么这样写：移动文件夹前需要查子文件夹做非法移动校验，DAO 提供最小数据入口，规则本身留给 UseCase/Repository。
-    @Query("SELECT * FROM file_entity WHERE parent_id = :parentId AND is_deleted = 0 AND type = 'folder'")
-    suspend fun findActiveChildFolders(parentId: String): List<FileEntity>
+    // [语法] List<String> 是 Kotlin 泛型集合，相当于 Java 的 List<String>；Room 会把它展开成 SQL 的 IN 参数。
+    // [设计] 为什么这样写：管理态删除/移动拿到的是一组选中 id，批量查询能减少多次 DAO 往返。
+    @Query("SELECT * FROM file_entity WHERE file_id IN (:fileIds) AND is_deleted = 0")
+    suspend fun findActiveFiles(fileIds: List<String>): List<FileEntity>
+
+    // [设计] 为什么这样写：重命名和上传都需要同目录重名检查，DAO 只返回数量，具体提示文案留给上层。
+    @Query(
+        """
+        SELECT COUNT(*) FROM file_entity
+        WHERE is_deleted = 0
+          AND name COLLATE NOCASE = :name
+          AND ((:parentId IS NULL AND parent_id IS NULL) OR parent_id = :parentId)
+          AND (:excludeFileId IS NULL OR file_id != :excludeFileId)
+        """
+    )
+    suspend fun countActiveNameInFolder(parentId: String?, name: String, excludeFileId: String?): Int
+
+    // [设计] 为什么这样写：移动弹窗按层级选择目标目录，DAO 支持 parentId 为 null 才能从根目录开始浏览。
+    @Query(
+        """
+        SELECT * FROM file_entity
+        WHERE is_deleted = 0
+          AND type = 'folder'
+          AND ((:parentId IS NULL AND parent_id IS NULL) OR parent_id = :parentId)
+        ORDER BY name COLLATE NOCASE ASC
+        """
+    )
+    suspend fun findActiveChildFolders(parentId: String?): List<FileEntity>
+
+    // [设计] 为什么这样写：递归软删除文件夹时需要拿到所有直接子节点，递归规则放 Repository，DAO 只提供一层查询。
+    @Query("SELECT * FROM file_entity WHERE parent_id = :parentId AND is_deleted = 0")
+    suspend fun findActiveChildren(parentId: String): List<FileEntity>
 
     // [设计] 为什么这样写：首次启动要判断是否需要把 mock JSON 入库，countAll 比拉全量文件更轻。
     @Query("SELECT COUNT(*) FROM file_entity")
