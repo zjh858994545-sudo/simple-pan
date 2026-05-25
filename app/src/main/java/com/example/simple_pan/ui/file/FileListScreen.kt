@@ -1,6 +1,7 @@
 package com.example.simple_pan.ui.file
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +58,9 @@ fun FileListScreen(
         },
         onBackToParent = {
             viewModel.onIntent(FileListIntent.BackToParent)
+        },
+        onFilterChange = { filter ->
+            viewModel.onIntent(FileListIntent.ChangeFilter(filter))
         }
     )
 }
@@ -66,7 +71,8 @@ private fun FileListContent(
     state: FileListState,
     onRetry: () -> Unit,
     onFolderClick: (CloudFile) -> Unit,
-    onBackToParent: () -> Unit
+    onBackToParent: () -> Unit,
+    onFilterChange: (FileFilter) -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -81,6 +87,11 @@ private fun FileListContent(
                 onBackToParent = onBackToParent
             )
             Spacer(modifier = Modifier.height(12.dp))
+            FileFilterBar(
+                selectedFilter = state.filter,
+                onFilterChange = onFilterChange
+            )
+            Spacer(modifier = Modifier.height(12.dp))
 
             when {
                 state.isLoading -> FileListLoading()
@@ -88,12 +99,38 @@ private fun FileListContent(
                     message = state.errorMessage,
                     onRetry = onRetry
                 )
-                state.files.isEmpty() -> FileListEmpty()
+                state.files.isEmpty() -> FileListEmpty(filter = state.filter)
                 else -> FileListItems(
                     files = state.files,
                     onFolderClick = onFolderClick
                 )
             }
+        }
+    }
+}
+
+// [设计] 为什么这样写：筛选栏放在列表页顶部，用户能在当前目录内快速切换全部/图片/视频/文档；筛选动作仍回到 ViewModel 处理。
+@Composable
+private fun FileFilterBar(
+    selectedFilter: FileFilter,
+    onFilterChange: (FileFilter) -> Unit
+) {
+    // [语法] rememberScrollState() 返回 Compose 状态对象，horizontalScroll 使用它保存横向滚动位置。
+    // [设计] 为什么这样写：小屏下四个筛选项可能放不下，横向滚动能避免文字挤压或换行导致布局跳动。
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        for (filter in FileFilter.entries) {
+            FilterChip(
+                selected = filter == selectedFilter,
+                onClick = { onFilterChange(filter) },
+                label = {
+                    Text(text = filter.toDisplayName())
+                }
+            )
         }
     }
 }
@@ -174,13 +211,13 @@ private fun FileListError(
 
 // [设计] 为什么这样写：空状态保留给数据库为空或筛选无结果场景，确保 UI 不把“空列表”误表现成加载失败。
 @Composable
-private fun FileListEmpty() {
+private fun FileListEmpty(filter: FileFilter) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "暂无文件",
+            text = if (filter == FileFilter.All) "暂无文件" else "暂无该类型文件",
             style = MaterialTheme.typography.bodyLarge
         )
     }
@@ -321,6 +358,17 @@ private fun FileType.toDisplayName(): String {
         FileType.Image -> "图片"
         FileType.Audio -> "音频"
         FileType.Other -> "其他"
+    }
+}
+
+// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileFilterDisplay.toDisplayName(filter)。
+// [设计] 为什么这样写：筛选枚举本身只表达策略，中文展示文案属于 UI 层，集中在这里便于后续改文案。
+private fun FileFilter.toDisplayName(): String {
+    return when (this) {
+        FileFilter.All -> "全部"
+        FileFilter.Image -> "图片"
+        FileFilter.Video -> "视频"
+        FileFilter.Document -> "文档"
     }
 }
 

@@ -2,6 +2,8 @@ package com.example.simple_pan.ui.file
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.simple_pan.domain.model.CloudFile
+import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.repository.FileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -24,6 +26,7 @@ class FileListViewModel @Inject constructor(
     val state: StateFlow<FileListState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var currentFolderFiles: List<CloudFile> = emptyList()
 
     init {
         loadFiles(
@@ -83,7 +86,10 @@ class FileListViewModel @Inject constructor(
             }
             is FileListIntent.ChangeFilter -> {
                 _state.update { currentState ->
-                    currentState.copy(filter = intent.filter)
+                    currentState.copy(
+                        filter = intent.filter,
+                        files = currentFolderFiles.applyFilter(intent.filter)
+                    )
                 }
             }
             is FileListIntent.ChangeSort -> {
@@ -123,9 +129,10 @@ class FileListViewModel @Inject constructor(
                 // [语法] collect 是 Flow 的收集函数，类似订阅 Observable；Room 表变化时这里会收到新列表。
                 // [设计] 为什么这样写：当前目录 ID 是观察 Room 的唯一输入，进入文件夹只切换 parentId，不让 UI 直接碰 DAO 查询。
                 fileRepository.observeFiles(parentId = folderId).collect { files ->
+                    currentFolderFiles = files
                     _state.update { currentState ->
                         currentState.copy(
-                            files = files,
+                            files = currentFolderFiles.applyFilter(currentState.filter),
                             isLoading = false,
                             errorMessage = null,
                             initializedFromMock = currentState.initializedFromMock || insertedMock
@@ -140,6 +147,17 @@ class FileListViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    // [语法] 这是 List<CloudFile> 的扩展函数，相当于 Java 静态工具方法 FileFilters.applyFilter(files, filter)。
+    // [设计] 为什么这样写：筛选规则放在 ViewModel 层，UI 只展示 State.files，不自己判断哪些文件该出现。
+    private fun List<CloudFile>.applyFilter(filter: FileFilter): List<CloudFile> {
+        return when (filter) {
+            FileFilter.All -> this
+            FileFilter.Image -> filter { file -> file.type == FileType.Image }
+            FileFilter.Video -> filter { file -> file.type == FileType.Video }
+            FileFilter.Document -> filter { file -> file.type == FileType.Txt }
         }
     }
 
