@@ -107,6 +107,24 @@ class FileListViewModel @Inject constructor(
                     )
                 }
             }
+            FileListIntent.EnterManageMode -> {
+                _state.update { currentState ->
+                    // [设计] 为什么这样写：每次进入管理模式都从空选择开始，避免上一次残留选择影响当前目录的操作。
+                    currentState.copy(
+                        isManageMode = true,
+                        selectedFileIds = emptySet()
+                    )
+                }
+            }
+            FileListIntent.ExitManageMode -> {
+                _state.update { currentState ->
+                    // [设计] 为什么这样写：退出管理模式时集中清空选中集合，后续无论从“完成”按钮还是其它入口退出，都不会留下脏状态。
+                    currentState.copy(
+                        isManageMode = false,
+                        selectedFileIds = emptySet()
+                    )
+                }
+            }
         }
     }
 

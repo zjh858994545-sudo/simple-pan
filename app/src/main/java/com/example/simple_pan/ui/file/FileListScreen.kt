@@ -1,6 +1,6 @@
 package com.example.simple_pan.ui.file
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -61,6 +62,15 @@ fun FileListScreen(
         },
         onFilterChange = { filter ->
             viewModel.onIntent(FileListIntent.ChangeFilter(filter))
+        },
+        onEnterManageMode = {
+            viewModel.onIntent(FileListIntent.EnterManageMode)
+        },
+        onExitManageMode = {
+            viewModel.onIntent(FileListIntent.ExitManageMode)
+        },
+        onFileLongClick = {
+            viewModel.onIntent(FileListIntent.EnterManageMode)
         }
     )
 }
@@ -72,7 +82,10 @@ private fun FileListContent(
     onRetry: () -> Unit,
     onFolderClick: (CloudFile) -> Unit,
     onBackToParent: () -> Unit,
-    onFilterChange: (FileFilter) -> Unit
+    onFilterChange: (FileFilter) -> Unit,
+    onEnterManageMode: () -> Unit,
+    onExitManageMode: () -> Unit,
+    onFileLongClick: (CloudFile) -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -84,7 +97,10 @@ private fun FileListContent(
                 folderName = state.currentFolderName,
                 fileCount = state.files.size,
                 canBackToParent = state.folderStack.isNotEmpty(),
-                onBackToParent = onBackToParent
+                isManageMode = state.isManageMode,
+                onBackToParent = onBackToParent,
+                onEnterManageMode = onEnterManageMode,
+                onExitManageMode = onExitManageMode
             )
             Spacer(modifier = Modifier.height(12.dp))
             FileFilterBar(
@@ -104,7 +120,9 @@ private fun FileListContent(
                 state.files.isEmpty() -> FileListEmpty(filter = state.filter)
                 else -> FileListItems(
                     files = state.files,
-                    onFolderClick = onFolderClick
+                    isManageMode = state.isManageMode,
+                    onFolderClick = onFolderClick,
+                    onFileLongClick = onFileLongClick
                 )
             }
         }
@@ -153,7 +171,10 @@ private fun FileListHeader(
     folderName: String,
     fileCount: Int,
     canBackToParent: Boolean,
-    onBackToParent: () -> Unit
+    isManageMode: Boolean,
+    onBackToParent: () -> Unit,
+    onEnterManageMode: () -> Unit,
+    onExitManageMode: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (canBackToParent) {
@@ -178,6 +199,12 @@ private fun FileListHeader(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // [设计] 为什么这样写：管理模式先放在列表头部入口，用户能主动进入；同一个按钮在管理态变成“完成”，让退出路径保持清晰。
+            Button(
+                onClick = if (isManageMode) onExitManageMode else onEnterManageMode
+            ) {
+                Text(text = if (isManageMode) "完成" else "管理")
             }
         }
     }
@@ -239,7 +266,9 @@ private fun FileListEmpty(filter: FileFilter) {
 @Composable
 private fun FileListItems(
     files: List<CloudFile>,
-    onFolderClick: (CloudFile) -> Unit
+    isManageMode: Boolean,
+    onFolderClick: (CloudFile) -> Unit,
+    onFileLongClick: (CloudFile) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是显式命名参数，类似 Java 回调里的参数名。
@@ -249,7 +278,9 @@ private fun FileListItems(
         ) { file ->
             FileRow(
                 file = file,
-                onFolderClick = onFolderClick
+                isManageMode = isManageMode,
+                onFolderClick = onFolderClick,
+                onFileLongClick = onFileLongClick
             )
             HorizontalDivider()
         }
@@ -260,13 +291,23 @@ private fun FileListItems(
 @Composable
 private fun FileRow(
     file: CloudFile,
-    onFolderClick: (CloudFile) -> Unit
+    isManageMode: Boolean,
+    onFolderClick: (CloudFile) -> Unit,
+    onFileLongClick: (CloudFile) -> Unit
 ) {
-    // [设计] 为什么这样写：只有文件夹行可点击进入子目录，普通文件打开留到阶段 5，避免当前步骤提前实现文件打开。
-    val rowModifier = if (file.type == FileType.Folder) {
-        Modifier.clickable { onFolderClick(file) }
-    } else {
-        Modifier
+    // [语法] pointerInput + detectTapGestures 类似 Java 里给 View 设置手势监听器，可以同时处理点击和长按。
+    // [设计] 为什么这样写：长按进入管理模式是阶段 3 的入口；管理态下先屏蔽文件夹点击，后续步骤再把点击改成勾选。
+    val rowModifier = Modifier.pointerInput(file.fileId, file.type, isManageMode) {
+        detectTapGestures(
+            onLongPress = {
+                onFileLongClick(file)
+            },
+            onTap = {
+                if (!isManageMode && file.type == FileType.Folder) {
+                    onFolderClick(file)
+                }
+            }
+        )
     }
 
     ListItem(

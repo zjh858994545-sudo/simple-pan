@@ -35,6 +35,11 @@ data class FileListState(
     val folderStack: List<FolderCrumb> = emptyList(),
     val filter: FileFilter = FileFilter.All,
     val sortType: FileSortType = FileSortType.Comprehensive,
+    // [语法] Set<String> 类似 Java 的 Set<String>，用于保存不重复的文件 id。
+    // [设计] 为什么这样写：管理模式的选择状态必须按 fileId 保存，不能按列表下标保存；否则筛选、排序、删除后容易选错行。
+    val selectedFileIds: Set<String> = emptySet(),
+    // [设计] 为什么这样写：用一个布尔值明确区分普通浏览态和管理态，后续底部操作栏、勾选圆圈都只依赖这一个状态来源。
+    val isManageMode: Boolean = false,
     val isLoading: Boolean = true,
     // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null 表示。
     val errorMessage: String? = null,
@@ -61,4 +66,12 @@ sealed interface FileListIntent {
 
     // [设计] 为什么这样写：排序变化属于用户意图，即使当前只有综合排序，也先保留 MVI 入口。
     data class ChangeSort(val sortType: FileSortType) : FileListIntent
+
+    // [语法] data object 是 Kotlin 的单例事件，类似 Java enum 里的一个固定值。
+    // [设计] 为什么这样写：进入管理模式不需要携带参数，统一通过 Intent 进入，避免 UI 直接修改 State。
+    data object EnterManageMode : FileListIntent
+
+    // [语法] data object 是 Kotlin 的单例事件，适合表达“退出管理模式”这种无参数动作。
+    // [设计] 为什么这样写：退出时必须同时清空选中状态，把规则收敛在 ViewModel，防止不同 UI 入口遗漏清理。
+    data object ExitManageMode : FileListIntent
 }
