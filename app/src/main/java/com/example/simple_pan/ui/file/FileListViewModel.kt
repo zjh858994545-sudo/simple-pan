@@ -26,18 +26,40 @@ class FileListViewModel @Inject constructor(
     private var loadJob: Job? = null
 
     init {
-        loadRootFiles()
+        loadFiles(
+            folderId = null,
+            folderName = "根目录",
+            folderStack = emptyList(),
+            shouldInitializeMock = true
+        )
     }
 
     // [设计] 为什么这样写：Composable 只发送 Intent，不直接调用加载函数，保留 MVI 的“用户行为 -> 状态变化”链路。
     fun onIntent(intent: FileListIntent) {
         when (intent) {
-            FileListIntent.Retry -> loadRootFiles()
+            FileListIntent.Retry -> {
+                val currentState = _state.value
+                loadFiles(
+                    folderId = currentState.currentFolderId,
+                    folderName = currentState.currentFolderName,
+                    folderStack = currentState.folderStack,
+                    shouldInitializeMock = true
+                )
+            }
             is FileListIntent.EnterFolder -> {
-                // [设计] 为什么这样写：第 1 步只扩展 MVI 入口，真正切换 observeFiles(parentId) 留到下一小步，避免一个步骤塞入行为改动。
-                _state.update { currentState ->
-                    currentState.copy(errorMessage = null)
-                }
+                val currentState = _state.value
+                // [语法] + 用在 List 上会生成新列表，不会修改原列表，类似 Java 里 new ArrayList(old).add(item) 后返回新对象。
+                // [设计] 为什么这样写：进入子目录前把当前目录压入路径栈，下一步实现“返回上一级”时可以直接从栈顶恢复。
+                val nextStack = currentState.folderStack + FolderCrumb(
+                    folderId = currentState.currentFolderId,
+                    folderName = currentState.currentFolderName
+                )
+                loadFiles(
+                    folderId = intent.folderId,
+                    folderName = intent.folderName,
+                    folderStack = nextStack,
+                    shouldInitializeMock = false
+                )
             }
             FileListIntent.BackToParent -> {
                 _state.update { currentState ->
@@ -57,20 +79,35 @@ class FileListViewModel @Inject constructor(
         }
     }
 
-    private fun loadRootFiles() {
+    private fun loadFiles(
+        folderId: String?,
+        folderName: String,
+        folderStack: List<FolderCrumb>,
+        shouldInitializeMock: Boolean
+    ) {
         // [语法] ?. 是 Kotlin 安全调用，相当于 Java 里先判断 loadJob != null 再调用 cancel，避免空指针。
         // [设计] 为什么这样写：用户重复点击重试时先取消旧收集任务，避免多个 Flow 同时更新同一份 State。
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { currentState ->
-                currentState.copy(isLoading = true, errorMessage = null)
+                currentState.copy(
+                    currentFolderId = folderId,
+                    currentFolderName = folderName,
+                    folderStack = folderStack,
+                    isLoading = true,
+                    errorMessage = null
+                )
             }
 
             try {
-                val insertedMock = fileRepository.initializeFromMockIfNeeded()
+                val insertedMock = if (shouldInitializeMock) {
+                    fileRepository.initializeFromMockIfNeeded()
+                } else {
+                    false
+                }
                 // [语法] collect 是 Flow 的收集函数，类似订阅 Observable；Room 表变化时这里会收到新列表。
-                // [设计] 为什么这样写：初始化后持续观察根目录，后续上传/删除/移动写库时列表能自动刷新。
-                fileRepository.observeFiles(parentId = null).collect { files ->
+                // [设计] 为什么这样写：当前目录 ID 是观察 Room 的唯一输入，进入文件夹只切换 parentId，不让 UI 直接碰 DAO 查询。
+                fileRepository.observeFiles(parentId = folderId).collect { files ->
                     _state.update { currentState ->
                         currentState.copy(
                             files = files,

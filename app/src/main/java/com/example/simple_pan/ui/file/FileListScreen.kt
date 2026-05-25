@@ -1,5 +1,6 @@
 package com.example.simple_pan.ui.file
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,14 @@ fun FileListScreen(
         state = state,
         onRetry = {
             viewModel.onIntent(FileListIntent.Retry)
+        },
+        onFolderClick = { folder ->
+            viewModel.onIntent(
+                FileListIntent.EnterFolder(
+                    folderId = folder.fileId,
+                    folderName = folder.name
+                )
+            )
         }
     )
 }
@@ -51,7 +60,8 @@ fun FileListScreen(
 @Composable
 private fun FileListContent(
     state: FileListState,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onFolderClick: (CloudFile) -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -59,7 +69,10 @@ private fun FileListContent(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            FileListHeader(fileCount = state.files.size)
+            FileListHeader(
+                folderName = state.currentFolderName,
+                fileCount = state.files.size
+            )
             Spacer(modifier = Modifier.height(12.dp))
 
             when {
@@ -69,27 +82,33 @@ private fun FileListContent(
                     onRetry = onRetry
                 )
                 state.files.isEmpty() -> FileListEmpty()
-                else -> FileListItems(files = state.files)
+                else -> FileListItems(
+                    files = state.files,
+                    onFolderClick = onFolderClick
+                )
             }
         }
     }
 }
 
-// [设计] 为什么这样写：头部只展示当前根目录的列表数量，第 7 步不做面包屑和文件夹进入，避免提前跨到阶段 2。
+// [设计] 为什么这样写：头部展示当前目录名称和数量，让用户确认已经进入子目录；返回按钮留到下一步单独实现。
 @Composable
-private fun FileListHeader(fileCount: Int) {
+private fun FileListHeader(
+    folderName: String,
+    fileCount: Int
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "文件",
+                text = folderName,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "根目录 · $fileCount 项",
+                text = "$fileCount 项",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -151,14 +170,20 @@ private fun FileListEmpty() {
 
 // [设计] 为什么这样写：LazyColumn 用稳定 key 绑定 fileId，后续排序/删除/管理态选择时不会因为 index 变化导致行状态串位。
 @Composable
-private fun FileListItems(files: List<CloudFile>) {
+private fun FileListItems(
+    files: List<CloudFile>,
+    onFolderClick: (CloudFile) -> Unit
+) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是显式命名参数，类似 Java 回调里的参数名。
         items(
             items = files,
             key = { file -> file.fileId }
         ) { file ->
-            FileRow(file = file)
+            FileRow(
+                file = file,
+                onFolderClick = onFolderClick
+            )
             HorizontalDivider()
         }
     }
@@ -166,8 +191,19 @@ private fun FileListItems(files: List<CloudFile>) {
 
 // [设计] 为什么这样写：列表行只展示领域模型 CloudFile，不接触 Entity 或 DTO，证明 UI 层已经和数据源细节解耦。
 @Composable
-private fun FileRow(file: CloudFile) {
+private fun FileRow(
+    file: CloudFile,
+    onFolderClick: (CloudFile) -> Unit
+) {
+    // [设计] 为什么这样写：只有文件夹行可点击进入子目录，普通文件打开留到阶段 5，避免当前步骤提前实现文件打开。
+    val rowModifier = if (file.type == FileType.Folder) {
+        Modifier.clickable { onFolderClick(file) }
+    } else {
+        Modifier
+    }
+
     ListItem(
+        modifier = rowModifier,
         leadingContent = {
             FileTypeBadge(fileType = file.type)
         },
