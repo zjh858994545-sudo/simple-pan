@@ -200,6 +200,32 @@ class FileListViewModel @Inject constructor(
             FileListIntent.ConfirmRename -> {
                 confirmRename()
             }
+            FileListIntent.OpenDeleteDialog -> {
+                val currentState = _state.value
+                if (currentState.selectedFileIds.isNotEmpty()) {
+                    val selectedFiles = currentState.files.filter { file ->
+                        file.fileId in currentState.selectedFileIds
+                    }
+                    _state.update { state ->
+                        state.copy(
+                            deleteDialog = DeleteDialogState(
+                                isVisible = true,
+                                fileIds = currentState.selectedFileIds,
+                                selectedCount = currentState.selectedFileIds.size,
+                                containsFolder = selectedFiles.any { file -> file.type == FileType.Folder }
+                            )
+                        )
+                    }
+                }
+            }
+            FileListIntent.DismissDeleteDialog -> {
+                _state.update { currentState ->
+                    currentState.copy(deleteDialog = DeleteDialogState())
+                }
+            }
+            FileListIntent.ConfirmDelete -> {
+                confirmDelete()
+            }
         }
     }
 
@@ -284,6 +310,68 @@ class FileListViewModel @Inject constructor(
                     isSubmitting = false
                 )
             )
+        }
+    }
+
+    // [设计] 为什么这样写：删除确认后只调用 Repository 的软删除能力，列表刷新交给 Room Flow，ViewModel 不手动从列表里移除项目。
+    private fun confirmDelete() {
+        val dialog = _state.value.deleteDialog
+        if (dialog.fileIds.isEmpty()) {
+            return
+        }
+
+        _state.update { currentState ->
+            currentState.copy(
+                deleteDialog = currentState.deleteDialog.copy(
+                    errorMessage = null,
+                    isSubmitting = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val deletedCount = fileRepository.deleteFiles(
+                    fileIds = dialog.fileIds.toList(),
+                    deletedAt = System.currentTimeMillis()
+                )
+                if (deletedCount > 0) {
+                    _state.update { currentState ->
+                        currentState.copy(
+                            deleteDialog = DeleteDialogState(),
+                            isManageMode = false,
+                            selectedFileIds = emptySet()
+                        )
+                    }
+                } else {
+                    showDeleteError("文件不存在或已被删除")
+                }
+            } catch (throwable: Throwable) {
+                showDeleteError(throwable.toDeleteMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：删除错误显示在确认弹窗里，用户可以取消或重试，不把整个文件列表切到错误页。
+    private fun showDeleteError(message: String) {
+        _state.update { currentState ->
+            currentState.copy(
+                deleteDialog = currentState.deleteDialog.copy(
+                    errorMessage = message,
+                    isSubmitting = false
+                )
+            )
+        }
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 DeleteErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：删除失败文案和列表加载失败文案分开，避免弹窗里出现“文件列表加载失败”这种不准确提示。
+    private fun Throwable.toDeleteMessage(): String {
+        val detail = message
+        return if (detail == null || detail.isBlank()) {
+            "删除失败，请重试"
+        } else {
+            "删除失败：$detail"
         }
     }
 

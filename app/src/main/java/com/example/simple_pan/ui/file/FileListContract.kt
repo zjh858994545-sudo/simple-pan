@@ -38,6 +38,17 @@ data class RenameDialogState(
     val isSubmitting: Boolean = false
 )
 
+// [语法] data class 相当于 Java 的 POJO/Bean，适合保存删除确认弹窗的一组状态。
+// [设计] 为什么这样写：删除是高风险操作，弹窗需要固定当时选中的 id 集合，避免用户打开弹窗后列表刷新导致删除目标变化。
+data class DeleteDialogState(
+    val isVisible: Boolean = false,
+    val fileIds: Set<String> = emptySet(),
+    val selectedCount: Int = 0,
+    val containsFolder: Boolean = false,
+    val errorMessage: String? = null,
+    val isSubmitting: Boolean = false
+)
+
 // [语法] data class 相当于 Java 的 POJO/Bean，Kotlin 会自动生成 equals/hashCode/toString/copy。
 // [设计] 为什么这样写：文件列表页用一个不可变 State 表达 loading、empty、error 和列表数据，Compose 只根据 State 重组，不在 UI 里手动刷新。
 data class FileListState(
@@ -58,6 +69,7 @@ data class FileListState(
     // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null 表示。
     val errorMessage: String? = null,
     val renameDialog: RenameDialogState = RenameDialogState(),
+    val deleteDialog: DeleteDialogState = DeleteDialogState(),
     val initializedFromMock: Boolean = false
 )
 
@@ -111,4 +123,14 @@ sealed interface FileListIntent {
     // [语法] data object 表示无参数提交动作，类似 Java enum 里的 CONFIRM_RENAME。
     // [设计] 为什么这样写：确认按钮只表达用户提交，具体空名、重名、写库逻辑留给 ViewModel。
     data object ConfirmRename : FileListIntent
+
+    // [设计] 为什么这样写：打开删除确认框要冻结当前选中集合，避免 UI 直接把可变的 selectedFileIds 当删除目标。
+    data object OpenDeleteDialog : FileListIntent
+
+    // [设计] 为什么这样写：取消删除要清理提交状态和错误信息，保持下一次打开弹窗是干净状态。
+    data object DismissDeleteDialog : FileListIntent
+
+    // [语法] data object 表示无参数提交动作，类似 Java enum 里的 CONFIRM_DELETE。
+    // [设计] 为什么这样写：确认删除只表达用户意图，递归软删除和刷新交给 ViewModel/Repository/Room Flow。
+    data object ConfirmDelete : FileListIntent
 }

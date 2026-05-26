@@ -90,6 +90,15 @@ fun FileListScreen(
         },
         onConfirmRename = {
             viewModel.onIntent(FileListIntent.ConfirmRename)
+        },
+        onOpenDeleteDialog = {
+            viewModel.onIntent(FileListIntent.OpenDeleteDialog)
+        },
+        onDismissDeleteDialog = {
+            viewModel.onIntent(FileListIntent.DismissDeleteDialog)
+        },
+        onConfirmDelete = {
+            viewModel.onIntent(FileListIntent.ConfirmDelete)
         }
     )
 }
@@ -109,7 +118,10 @@ private fun FileListContent(
     onOpenRenameDialog: () -> Unit,
     onDismissRenameDialog: () -> Unit,
     onRenameInputChange: (String) -> Unit,
-    onConfirmRename: () -> Unit
+    onConfirmRename: () -> Unit,
+    onOpenDeleteDialog: () -> Unit,
+    onDismissDeleteDialog: () -> Unit,
+    onConfirmDelete: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -163,7 +175,7 @@ private fun FileListContent(
                 FileManageActionBar(
                     selectedCount = state.selectedFileIds.size,
                     onShareClick = {},
-                    onDeleteClick = {},
+                    onDeleteClick = onOpenDeleteDialog,
                     onMoveClick = {},
                     onRenameClick = onOpenRenameDialog
                 )
@@ -175,6 +187,14 @@ private fun FileListContent(
                     onNameChange = onRenameInputChange,
                     onDismiss = onDismissRenameDialog,
                     onConfirm = onConfirmRename
+                )
+            }
+
+            if (state.deleteDialog.isVisible) {
+                DeleteFilesDialog(
+                    dialogState = state.deleteDialog,
+                    onDismiss = onDismissDeleteDialog,
+                    onConfirm = onConfirmDelete
                 )
             }
         }
@@ -319,6 +339,71 @@ private fun RenameFileDialog(
                 onClick = onConfirm
             ) {
                 Text(text = if (dialogState.isSubmitting) "处理中" else "确定")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onDismiss
+            ) {
+                Text(text = "取消")
+            }
+        }
+    )
+}
+
+// [设计] 为什么这样写：删除确认是防误操作边界，弹窗只负责展示风险和收集确认，真正软删除仍回到 ViewModel 执行。
+@Composable
+private fun DeleteFilesDialog(
+    dialogState: DeleteDialogState,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!dialogState.isSubmitting) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(text = "确认删除")
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "将删除选中的 ${dialogState.selectedCount} 项。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (dialogState.containsFolder) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "其中包含文件夹，将同时删除文件夹内文件。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "本操作为软删除，列表会在 Room 更新后自动刷新。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (dialogState.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = dialogState.errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onConfirm
+            ) {
+                Text(text = if (dialogState.isSubmitting) "删除中" else "删除")
             }
         },
         dismissButton = {
