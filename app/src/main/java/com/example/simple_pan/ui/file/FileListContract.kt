@@ -49,6 +49,22 @@ data class DeleteDialogState(
     val isSubmitting: Boolean = false
 )
 
+// [语法] data class 相当于 Java 的 POJO/Bean，适合保存移动弹窗的一组不可变 UI 状态。
+// [设计] 为什么这样写：移动弹窗要维护目标目录浏览栈、候选文件夹、非法目标和提交状态，集中到 State 能避免 UI 自己保存复杂临时状态。
+data class MoveDialogState(
+    val isVisible: Boolean = false,
+    val fileIds: Set<String> = emptySet(),
+    val selectedCount: Int = 0,
+    val currentTargetFolderId: String? = null,
+    val currentTargetFolderName: String = "根目录",
+    val targetFolderStack: List<FolderCrumb> = emptyList(),
+    val targetFolders: List<CloudFile> = emptyList(),
+    val forbiddenFolderIds: Set<String> = emptySet(),
+    val errorMessage: String? = null,
+    val isLoading: Boolean = false,
+    val isSubmitting: Boolean = false
+)
+
 // [语法] data class 相当于 Java 的 POJO/Bean，Kotlin 会自动生成 equals/hashCode/toString/copy。
 // [设计] 为什么这样写：文件列表页用一个不可变 State 表达 loading、empty、error 和列表数据，Compose 只根据 State 重组，不在 UI 里手动刷新。
 data class FileListState(
@@ -70,6 +86,7 @@ data class FileListState(
     val errorMessage: String? = null,
     val renameDialog: RenameDialogState = RenameDialogState(),
     val deleteDialog: DeleteDialogState = DeleteDialogState(),
+    val moveDialog: MoveDialogState = MoveDialogState(),
     val initializedFromMock: Boolean = false
 )
 
@@ -133,4 +150,21 @@ sealed interface FileListIntent {
     // [语法] data object 表示无参数提交动作，类似 Java enum 里的 CONFIRM_DELETE。
     // [设计] 为什么这样写：确认删除只表达用户意图，递归软删除和刷新交给 ViewModel/Repository/Room Flow。
     data object ConfirmDelete : FileListIntent
+
+    // [设计] 为什么这样写：打开移动弹窗要冻结当前选中集合，并由 ViewModel 加载根目录候选目标。
+    data object OpenMoveDialog : FileListIntent
+
+    // [设计] 为什么这样写：关闭移动弹窗要清空目标浏览栈、候选列表和错误状态，避免影响下一次移动。
+    data object DismissMoveDialog : FileListIntent
+
+    // [语法] data class 用来携带目标文件夹 id/name，相当于 Java 事件对象 EnterMoveTargetFolder。
+    // [设计] 为什么这样写：移动弹窗的目录浏览和主文件列表浏览是两套状态，必须用单独 Intent 区分。
+    data class EnterMoveTargetFolder(val folderId: String, val folderName: String) : FileListIntent
+
+    // [设计] 为什么这样写：目标选择弹窗内部返回上一级由 ViewModel 根据 targetFolderStack 决定，UI 不计算父目录。
+    data object BackMoveTargetFolder : FileListIntent
+
+    // [语法] data object 表示无参数提交动作，类似 Java enum 里的 CONFIRM_MOVE。
+    // [设计] 为什么这样写：确认移动只表达用户意图，目标合法性和写库统一放在 ViewModel/Repository。
+    data object ConfirmMove : FileListIntent
 }

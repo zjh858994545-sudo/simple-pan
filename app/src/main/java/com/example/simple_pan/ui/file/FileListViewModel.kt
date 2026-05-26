@@ -226,6 +226,26 @@ class FileListViewModel @Inject constructor(
             FileListIntent.ConfirmDelete -> {
                 confirmDelete()
             }
+            FileListIntent.OpenMoveDialog -> {
+                openMoveDialog()
+            }
+            FileListIntent.DismissMoveDialog -> {
+                _state.update { currentState ->
+                    currentState.copy(moveDialog = MoveDialogState())
+                }
+            }
+            is FileListIntent.EnterMoveTargetFolder -> {
+                enterMoveTargetFolder(
+                    folderId = intent.folderId,
+                    folderName = intent.folderName
+                )
+            }
+            FileListIntent.BackMoveTargetFolder -> {
+                backMoveTargetFolder()
+            }
+            FileListIntent.ConfirmMove -> {
+                confirmMove()
+            }
         }
     }
 
@@ -372,6 +392,239 @@ class FileListViewModel @Inject constructor(
             "删除失败，请重试"
         } else {
             "删除失败：$detail"
+        }
+    }
+
+    // [设计] 为什么这样写：打开移动弹窗时冻结当前选中集合，并预先计算禁止选择的目录，后续 UI 才能明确禁用非法目标。
+    private fun openMoveDialog() {
+        val selectedFileIds = _state.value.selectedFileIds
+        if (selectedFileIds.isEmpty()) {
+            return
+        }
+
+        _state.update { currentState ->
+            currentState.copy(
+                moveDialog = MoveDialogState(
+                    isVisible = true,
+                    fileIds = selectedFileIds,
+                    selectedCount = selectedFileIds.size,
+                    isLoading = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val selectedFiles = fileRepository.findActiveFiles(selectedFileIds.toList())
+                if (selectedFiles.isEmpty()) {
+                    showMoveError("文件不存在或已被删除")
+                    return@launch
+                }
+
+                val forbiddenFolderIds = buildForbiddenMoveTargetIds(selectedFiles)
+                val rootFolders = fileRepository.findActiveChildFolders(parentId = null)
+                _state.update { currentState ->
+                    if (!currentState.moveDialog.isVisible) {
+                        currentState
+                    } else {
+                        currentState.copy(
+                            moveDialog = currentState.moveDialog.copy(
+                                fileIds = selectedFiles.map { file -> file.fileId }.toSet(),
+                                selectedCount = selectedFiles.size,
+                                currentTargetFolderId = null,
+                                currentTargetFolderName = "根目录",
+                                targetFolderStack = emptyList(),
+                                targetFolders = rootFolders,
+                                forbiddenFolderIds = forbiddenFolderIds,
+                                errorMessage = null,
+                                isLoading = false
+                            )
+                        )
+                    }
+                }
+            } catch (throwable: Throwable) {
+                showMoveError(throwable.toMoveMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：进入目标文件夹前先拦截自身/子目录，防止用户在弹窗里浏览到非法目标后再提交。
+    private fun enterMoveTargetFolder(folderId: String, folderName: String) {
+        val dialog = _state.value.moveDialog
+        if (!dialog.isVisible) {
+            return
+        }
+        if (folderId in dialog.forbiddenFolderIds) {
+            showMoveError("不能移动到自身或子目录")
+            return
+        }
+
+        val nextStack = dialog.targetFolderStack + FolderCrumb(
+            folderId = dialog.currentTargetFolderId,
+            folderName = dialog.currentTargetFolderName
+        )
+        loadMoveTargetFolder(
+            folderId = folderId,
+            folderName = folderName,
+            folderStack = nextStack
+        )
+    }
+
+    // [设计] 为什么这样写：移动弹窗里的返回只影响目标选择器，不改变主文件列表当前目录。
+    private fun backMoveTargetFolder() {
+        val dialog = _state.value.moveDialog
+        val parentCrumb = dialog.targetFolderStack.lastOrNull() ?: return
+        loadMoveTargetFolder(
+            folderId = parentCrumb.folderId,
+            folderName = parentCrumb.folderName,
+            folderStack = dialog.targetFolderStack.dropLast(1)
+        )
+    }
+
+    // [设计] 为什么这样写：目标目录候选由 Repository 查询，弹窗只根据 State 渲染；这样移动弹窗和主列表数据流保持一致。
+    private fun loadMoveTargetFolder(
+        folderId: String?,
+        folderName: String,
+        folderStack: List<FolderCrumb>
+    ) {
+        _state.update { currentState ->
+            currentState.copy(
+                moveDialog = currentState.moveDialog.copy(
+                    currentTargetFolderId = folderId,
+                    currentTargetFolderName = folderName,
+                    targetFolderStack = folderStack,
+                    errorMessage = null,
+                    isLoading = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val folders = fileRepository.findActiveChildFolders(folderId)
+                _state.update { currentState ->
+                    if (!currentState.moveDialog.isVisible) {
+                        currentState
+                    } else {
+                        currentState.copy(
+                            moveDialog = currentState.moveDialog.copy(
+                                targetFolders = folders,
+                                errorMessage = null,
+                                isLoading = false
+                            )
+                        )
+                    }
+                }
+            } catch (throwable: Throwable) {
+                showMoveError(throwable.toMoveMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：确认移动时再次从 Repository 读取活动文件和目标文件夹，防止弹窗打开期间文件被删除或目标失效。
+    private fun confirmMove() {
+        val dialog = _state.value.moveDialog
+        if (dialog.fileIds.isEmpty()) {
+            return
+        }
+
+        val targetParentId = dialog.currentTargetFolderId
+        if (targetParentId != null && targetParentId in dialog.forbiddenFolderIds) {
+            showMoveError("不能移动到自身或子目录")
+            return
+        }
+
+        _state.update { currentState ->
+            currentState.copy(
+                moveDialog = currentState.moveDialog.copy(
+                    errorMessage = null,
+                    isSubmitting = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val activeFiles = fileRepository.findActiveFiles(dialog.fileIds.toList())
+                if (activeFiles.isEmpty()) {
+                    showMoveError("文件不存在或已被删除")
+                    return@launch
+                }
+
+                if (targetParentId != null) {
+                    val targetFolder = fileRepository.findActiveFile(targetParentId)
+                    if (targetFolder == null || targetFolder.type != FileType.Folder) {
+                        showMoveError("目标文件夹不存在")
+                        return@launch
+                    }
+                }
+
+                val forbiddenFolderIds = buildForbiddenMoveTargetIds(activeFiles)
+                if (targetParentId != null && targetParentId in forbiddenFolderIds) {
+                    showMoveError("不能移动到自身或子目录")
+                    return@launch
+                }
+
+                if (activeFiles.all { file -> file.parentId == targetParentId }) {
+                    showMoveError("文件已在目标文件夹中")
+                    return@launch
+                }
+
+                val movedCount = fileRepository.moveFiles(
+                    fileIds = activeFiles.map { file -> file.fileId },
+                    targetParentId = targetParentId,
+                    updatedAt = System.currentTimeMillis()
+                )
+                if (movedCount > 0) {
+                    _state.update { currentState ->
+                        currentState.copy(
+                            moveDialog = MoveDialogState(),
+                            isManageMode = false,
+                            selectedFileIds = emptySet()
+                        )
+                    }
+                } else {
+                    showMoveError("移动失败，请重试")
+                }
+            } catch (throwable: Throwable) {
+                showMoveError(throwable.toMoveMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：禁止目标由“被移动的文件夹自身 + 所有后代文件夹”组成，普通文件不会产生非法子目录问题。
+    private suspend fun buildForbiddenMoveTargetIds(selectedFiles: List<CloudFile>): Set<String> {
+        val forbiddenFolderIds = mutableSetOf<String>()
+        for (file in selectedFiles) {
+            if (file.type == FileType.Folder) {
+                forbiddenFolderIds += file.fileId
+                forbiddenFolderIds += fileRepository.findActiveDescendantFolderIds(file.fileId)
+            }
+        }
+        return forbiddenFolderIds
+    }
+
+    // [设计] 为什么这样写：移动失败文案与删除/重命名分开，弹窗能展示准确的业务动作名称。
+    private fun showMoveError(message: String) {
+        _state.update { currentState ->
+            currentState.copy(
+                moveDialog = currentState.moveDialog.copy(
+                    errorMessage = message,
+                    isLoading = false,
+                    isSubmitting = false
+                )
+            )
+        }
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 MoveErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：移动失败时保留底层异常细节，便于开发阶段定位数据库或校验问题。
+    private fun Throwable.toMoveMessage(): String {
+        val detail = message
+        return if (detail == null || detail.isBlank()) {
+            "移动失败，请重试"
+        } else {
+            "移动失败：$detail"
         }
     }
 

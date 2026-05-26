@@ -99,6 +99,26 @@ fun FileListScreen(
         },
         onConfirmDelete = {
             viewModel.onIntent(FileListIntent.ConfirmDelete)
+        },
+        onOpenMoveDialog = {
+            viewModel.onIntent(FileListIntent.OpenMoveDialog)
+        },
+        onDismissMoveDialog = {
+            viewModel.onIntent(FileListIntent.DismissMoveDialog)
+        },
+        onEnterMoveTargetFolder = { folder ->
+            viewModel.onIntent(
+                FileListIntent.EnterMoveTargetFolder(
+                    folderId = folder.fileId,
+                    folderName = folder.name
+                )
+            )
+        },
+        onBackMoveTargetFolder = {
+            viewModel.onIntent(FileListIntent.BackMoveTargetFolder)
+        },
+        onConfirmMove = {
+            viewModel.onIntent(FileListIntent.ConfirmMove)
         }
     )
 }
@@ -121,7 +141,12 @@ private fun FileListContent(
     onConfirmRename: () -> Unit,
     onOpenDeleteDialog: () -> Unit,
     onDismissDeleteDialog: () -> Unit,
-    onConfirmDelete: () -> Unit
+    onConfirmDelete: () -> Unit,
+    onOpenMoveDialog: () -> Unit,
+    onDismissMoveDialog: () -> Unit,
+    onEnterMoveTargetFolder: (CloudFile) -> Unit,
+    onBackMoveTargetFolder: () -> Unit,
+    onConfirmMove: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -176,7 +201,7 @@ private fun FileListContent(
                     selectedCount = state.selectedFileIds.size,
                     onShareClick = {},
                     onDeleteClick = onOpenDeleteDialog,
-                    onMoveClick = {},
+                    onMoveClick = onOpenMoveDialog,
                     onRenameClick = onOpenRenameDialog
                 )
             }
@@ -195,6 +220,16 @@ private fun FileListContent(
                     dialogState = state.deleteDialog,
                     onDismiss = onDismissDeleteDialog,
                     onConfirm = onConfirmDelete
+                )
+            }
+
+            if (state.moveDialog.isVisible) {
+                MoveFilesDialog(
+                    dialogState = state.moveDialog,
+                    onEnterFolder = onEnterMoveTargetFolder,
+                    onBackToParent = onBackMoveTargetFolder,
+                    onDismiss = onDismissMoveDialog,
+                    onConfirm = onConfirmMove
                 )
             }
         }
@@ -415,6 +450,151 @@ private fun DeleteFilesDialog(
             }
         }
     )
+}
+
+// [设计] 为什么这样写：移动弹窗内部维护目标目录选择，但不直接改数据库；用户确认后仍由 ViewModel 统一校验并调用 Repository。
+@Composable
+private fun MoveFilesDialog(
+    dialogState: MoveDialogState,
+    onEnterFolder: (CloudFile) -> Unit,
+    onBackToParent: () -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val isCurrentTargetForbidden = dialogState.currentTargetFolderId != null &&
+        dialogState.currentTargetFolderId in dialogState.forbiddenFolderIds
+    AlertDialog(
+        onDismissRequest = {
+            if (!dialogState.isSubmitting) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(text = "移动到")
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "已选择 ${dialogState.selectedCount} 项",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text = "目标：${dialogState.currentTargetFolderName}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (dialogState.targetFolderStack.isNotEmpty()) {
+                        TextButton(
+                            enabled = !dialogState.isLoading && !dialogState.isSubmitting,
+                            onClick = onBackToParent
+                        ) {
+                            Text(text = "返回")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                when {
+                    dialogState.isLoading -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    dialogState.targetFolders.isEmpty() -> {
+                        Text(
+                            text = "当前目录下没有子文件夹",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    else -> {
+                        LazyColumn(modifier = Modifier.height(180.dp)) {
+                            items(
+                                items = dialogState.targetFolders,
+                                key = { folder -> folder.fileId }
+                            ) { folder ->
+                                MoveTargetFolderRow(
+                                    folder = folder,
+                                    isForbidden = folder.fileId in dialogState.forbiddenFolderIds,
+                                    isSubmitting = dialogState.isSubmitting,
+                                    onEnterFolder = onEnterFolder
+                                )
+                            }
+                        }
+                    }
+                }
+                if (dialogState.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = dialogState.errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !dialogState.isLoading && !dialogState.isSubmitting && !isCurrentTargetForbidden,
+                onClick = onConfirm
+            ) {
+                Text(text = if (dialogState.isSubmitting) "移动中" else "移动到此处")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onDismiss
+            ) {
+                Text(text = "取消")
+            }
+        }
+    )
+}
+
+// [设计] 为什么这样写：目标文件夹行只表达“进入这个候选目录”，非法目录禁用显示，真正移动动作只由弹窗确认按钮触发。
+@Composable
+private fun MoveTargetFolderRow(
+    folder: CloudFile,
+    isForbidden: Boolean,
+    isSubmitting: Boolean,
+    onEnterFolder: (CloudFile) -> Unit
+) {
+    TextButton(
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !isForbidden && !isSubmitting,
+        onClick = {
+            onEnterFolder(folder)
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = folder.name,
+                maxLines = 1
+            )
+            Text(
+                text = if (isForbidden) "不可移动" else "进入",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isForbidden) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+            )
+        }
+    }
 }
 
 // [设计] 为什么这样写：筛选栏放在列表页顶部，用户能在当前目录内快速切换全部/图片/视频/文档；筛选动作仍回到 ViewModel 处理。
