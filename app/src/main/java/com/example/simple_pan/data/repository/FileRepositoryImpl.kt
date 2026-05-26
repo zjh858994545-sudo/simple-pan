@@ -3,12 +3,15 @@ package com.example.simple_pan.data.repository
 import androidx.room.withTransaction
 import com.example.simple_pan.data.local.AppDatabase
 import com.example.simple_pan.data.local.dao.FileDao
+import com.example.simple_pan.data.local.dao.TransferHistoryDao
 import com.example.simple_pan.data.local.entity.FileEntity
+import com.example.simple_pan.data.local.entity.TransferHistoryEntity
 import com.example.simple_pan.data.local.mapper.toDomain
 import com.example.simple_pan.data.local.mapper.toEntity
 import com.example.simple_pan.data.remote.FakeRemoteDataSource
 import com.example.simple_pan.di.IoDispatcher
 import com.example.simple_pan.domain.model.CloudFile
+import com.example.simple_pan.domain.model.UploadFileRecord
 import com.example.simple_pan.domain.repository.FileRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,6 +26,7 @@ import kotlinx.coroutines.withContext
 class FileRepositoryImpl @Inject constructor(
     private val database: AppDatabase,
     private val fileDao: FileDao,
+    private val transferHistoryDao: TransferHistoryDao,
     private val fakeRemoteDataSource: FakeRemoteDataSource,
     // [语法] @param:IoDispatcher 明确注解作用在构造参数上，类似 Java 构造参数注解，避免 Kotlin 未来版本改变默认目标。
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
@@ -153,6 +157,31 @@ class FileRepositoryImpl @Inject constructor(
                 fileDao.softDeleteFiles(idsToDelete.toList(), deletedAt)
             }
         }
+    }
+
+    // [语法] suspend fun + withContext 表示协程函数切到指定线程执行，类似 Java 把数据库任务提交到 IO Executor。
+    // [设计] 为什么这样写：上传成功后的三个数据库动作必须原子完成，避免文件列表出现了文件但首页最近转存没有记录。
+    override suspend fun saveUploadedFile(record: UploadFileRecord, transferredAt: Long): CloudFile = withContext(ioDispatcher) {
+        database.withTransaction {
+            fileDao.insert(record.toEntity())
+            transferHistoryDao.insert(
+                TransferHistoryEntity(
+                    fileId = record.fileId,
+                    transferType = TransferHistoryEntity.TYPE_UPLOAD,
+                    shareToken = null,
+                    transferredAt = transferredAt
+                )
+            )
+            fileDao.markTransferred(
+                fileId = record.fileId,
+                transferredAt = transferredAt
+            )
+        }
+
+        val savedFile = fileDao.findActiveFile(record.fileId)
+        requireNotNull(savedFile) {
+            "上传文件写入后无法读取：${record.fileId}"
+        }.toDomain()
     }
 
     // [设计] 为什么这样写：后代目录查询用于移动校验，只关心文件夹 id；递归放在 Repository 里，避免把业务含义塞进复杂 SQL。

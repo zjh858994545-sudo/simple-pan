@@ -4,6 +4,7 @@ import com.example.simple_pan.data.local.entity.FileEntity
 import com.example.simple_pan.data.remote.dto.FileDto
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import com.example.simple_pan.domain.model.UploadFileRecord
 
 // [语法] 这是扩展函数，相当于 Java 里的静态工具方法 FileMappers.toEntity(fileDto)。
 // [设计] 为什么这样写：DTO 到 Entity 的转换集中在 mapper，Repository 只表达数据流，不堆字段搬运细节。
@@ -24,6 +25,28 @@ fun FileDto.toEntity(): FileEntity {
         isDeleted = isDeleted,
         isPinned = isPinned,
         source = source
+    )
+}
+
+// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileMappers.toEntity(record)。
+// [设计] 为什么这样写：上传入库的字段转换集中在 mapper，Repository 只负责事务编排，不把 FileEntity 的所有字段散落在业务代码里。
+fun UploadFileRecord.toEntity(): FileEntity {
+    return FileEntity(
+        fileId = fileId,
+        parentId = parentId,
+        name = name,
+        type = type.storageValue,
+        mimeType = mimeType,
+        sizeBytes = sizeBytes,
+        localPath = localPath,
+        originalUri = originalUri,
+        createdAt = createdAt,
+        updatedAt = createdAt,
+        openedAt = null,
+        transferredAt = null,
+        isDeleted = false,
+        isPinned = false,
+        source = FileEntity.SOURCE_UPLOAD
     )
 }
 
