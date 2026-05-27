@@ -60,8 +60,15 @@ fun FileListScreen(
     // [设计] 为什么这样写：Snackbar 是一次性 Effect，必须在 Screen 层收集；这样 ViewModel 只发事件，不直接依赖 Compose UI 组件。
     LaunchedEffect(viewModel) {
         viewModel.effect.collect { effect ->
+            // [设计] 为什么这样写：当前步骤只验证“点击 -> OpenFileUseCase -> Effect”链路，TXT 页面和系统播放器会在后续步骤把这里的占位 Snackbar 换成真实打开动作。
             when (effect) {
                 is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is FileListEffect.OpenTxtReader -> {
+                    snackbarHostState.showSnackbar("TXT 阅读器下一步接入：${effect.fileName}")
+                }
+                is FileListEffect.OpenVideoPlayer -> {
+                    snackbarHostState.showSnackbar("视频播放器下一步接入：${effect.fileName}")
+                }
             }
         }
     }
@@ -94,6 +101,9 @@ fun FileListScreen(
                         folderName = folder.name
                     )
                 )
+            },
+            onFileClick = { file ->
+                viewModel.onIntent(FileListIntent.OpenFile(file.fileId))
             },
             onBackToParent = {
                 viewModel.onIntent(FileListIntent.BackToParent)
@@ -168,6 +178,7 @@ private fun FileListContent(
     state: FileListState,
     onRetry: () -> Unit,
     onFolderClick: (CloudFile) -> Unit,
+    onFileClick: (CloudFile) -> Unit,
     onBackToParent: () -> Unit,
     onFilterChange: (FileFilter) -> Unit,
     onEnterManageMode: () -> Unit,
@@ -232,6 +243,7 @@ private fun FileListContent(
                             isManageMode = state.isManageMode,
                             selectedFileIds = state.selectedFileIds,
                             onFolderClick = onFolderClick,
+                            onFileClick = onFileClick,
                             onToggleFileSelection = onToggleFileSelection
                         )
                     }
@@ -856,6 +868,7 @@ private fun FileListItems(
     isManageMode: Boolean,
     selectedFileIds: Set<String>,
     onFolderClick: (CloudFile) -> Unit,
+    onFileClick: (CloudFile) -> Unit,
     onToggleFileSelection: (CloudFile) -> Unit
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -869,6 +882,7 @@ private fun FileListItems(
                 isManageMode = isManageMode,
                 isSelected = file.fileId in selectedFileIds,
                 onFolderClick = onFolderClick,
+                onFileClick = onFileClick,
                 onToggleFileSelection = onToggleFileSelection
             )
             HorizontalDivider()
@@ -883,10 +897,11 @@ private fun FileRow(
     isManageMode: Boolean,
     isSelected: Boolean,
     onFolderClick: (CloudFile) -> Unit,
+    onFileClick: (CloudFile) -> Unit,
     onToggleFileSelection: (CloudFile) -> Unit
 ) {
     // [语法] pointerInput + detectTapGestures 类似 Java 里给 View 设置手势监听器，可以同时处理点击和长按。
-    // [设计] 为什么这样写：普通态点击文件夹仍负责浏览；管理态点击整行切换选择，长按则进入管理态并选中当前文件。
+    // [设计] 为什么这样写：普通态点击文件夹负责浏览、点击普通文件只表达打开意图；管理态点击整行切换选择，避免浏览和批量操作两套交互互相抢焦点。
     val rowModifier = Modifier.pointerInput(file.fileId, file.type, isManageMode, isSelected) {
         detectTapGestures(
             onLongPress = {
@@ -897,6 +912,8 @@ private fun FileRow(
                     onToggleFileSelection(file)
                 } else if (file.type == FileType.Folder) {
                     onFolderClick(file)
+                } else {
+                    onFileClick(file)
                 }
             }
         )

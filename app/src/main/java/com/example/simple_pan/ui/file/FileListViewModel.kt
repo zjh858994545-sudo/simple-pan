@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import com.example.simple_pan.domain.model.OpenFileResult
 import com.example.simple_pan.domain.model.UploadFileResult
 import com.example.simple_pan.domain.model.UploadSizeCheckResult
 import com.example.simple_pan.domain.repository.FileRepository
+import com.example.simple_pan.domain.usecase.OpenFileUseCase
 import com.example.simple_pan.domain.usecase.UploadFileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -26,6 +28,7 @@ import java.util.Locale
 @HiltViewModel
 class FileListViewModel @Inject constructor(
     private val fileRepository: FileRepository,
+    private val openFileUseCase: OpenFileUseCase,
     private val uploadFileUseCase: UploadFileUseCase
 ) : ViewModel() {
     // [语法] MutableStateFlow 类似 Java Observable + 当前值缓存；私有可变、公开只读是 Kotlin 常见封装方式。
@@ -64,6 +67,9 @@ class FileListViewModel @Inject constructor(
             }
             is FileListIntent.UploadPickedFile -> {
                 uploadPickedFile(intent.uriString)
+            }
+            is FileListIntent.OpenFile -> {
+                openFile(intent.fileId)
             }
             is FileListIntent.EnterFolder -> {
                 val currentState = _state.value
@@ -262,6 +268,54 @@ class FileListViewModel @Inject constructor(
                 confirmMove()
             }
         }
+    }
+
+    // [设计] 为什么这样写：打开文件是一次性用户动作，不应该写进持久 State；ViewModel 只负责调用领域用例并发出 Effect，真正的页面跳转或系统 Intent 留给 Screen 层。
+    private fun openFile(fileId: String) {
+        viewModelScope.launch {
+            try {
+                when (val result = openFileUseCase(fileId)) {
+                    is OpenFileResult.ReadyForTxtReader -> {
+                        _effect.emit(
+                            FileListEffect.OpenTxtReader(
+                                fileId = result.fileId,
+                                fileName = result.fileName
+                            )
+                        )
+                    }
+                    is OpenFileResult.ReadyForVideoPlayer -> {
+                        _effect.emit(
+                            FileListEffect.OpenVideoPlayer(
+                                fileId = result.fileId,
+                                fileName = result.fileName,
+                                localPath = result.localPath,
+                                mimeType = result.mimeType
+                            )
+                        )
+                    }
+                    OpenFileResult.FileNotFound -> {
+                        showOpenFileMessage("文件不存在或已被删除")
+                    }
+                    OpenFileResult.LocalPathMissing -> {
+                        showOpenFileMessage("文件还没有本地内容，请先上传真实文件")
+                    }
+                    OpenFileResult.LocalFileMissing -> {
+                        showOpenFileMessage("本地文件不存在，请重新上传")
+                    }
+                    is OpenFileResult.UnsupportedType -> {
+                        showOpenFileMessage("${result.fileType.toOpenTypeName()} 暂不支持打开")
+                    }
+                }
+            } catch (throwable: Throwable) {
+                showOpenFileMessage(throwable.toOpenFileMessage())
+            }
+        }
+    }
+
+    // [语法] suspend fun 表示挂起函数，类似 Java 里异步 Future/回调中的一段可等待逻辑。
+    // [设计] 为什么这样写：打开失败提示和上传提示一样都是一次性 Effect，但不应该修改 isUploading，单独封装能避免两个业务动作互相影响。
+    private suspend fun showOpenFileMessage(message: String) {
+        _effect.emit(FileListEffect.ShowMessage(message))
     }
 
     // [设计] 为什么这样写：上传目标目录取自当前 State，UI 只负责把 SAF Uri 交回来；成功后的列表刷新继续依赖 Room Flow，不在这里手动插入列表项。
@@ -726,6 +780,17 @@ class FileListViewModel @Inject constructor(
         return message.toUploadFailedMessage()
     }
 
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 OpenFileErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：打开文件的异常文案和列表加载、上传文案分开，后续定位问题时能从提示直接判断失败发生在“打开”链路。
+    private fun Throwable.toOpenFileMessage(): String {
+        val detail = message
+        return if (detail == null || detail.isBlank()) {
+            "打开失败，请重试"
+        } else {
+            "打开失败：$detail"
+        }
+    }
+
     private fun loadFiles(
         folderId: String?,
         folderName: String,
@@ -830,6 +895,19 @@ class FileListViewModel @Inject constructor(
             FileFilter.Image -> filter { file -> file.type == FileType.Image }
             FileFilter.Video -> filter { file -> file.type == FileType.Video }
             FileFilter.Document -> filter { file -> file.type == FileType.Txt }
+        }
+    }
+
+    // [语法] 这是 FileType 的扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toOpenTypeName(fileType)。
+    // [设计] 为什么这样写：不支持打开时要给用户看业务名称，映射集中在 ViewModel，避免 UI 为错误提示重复认识领域枚举。
+    private fun FileType.toOpenTypeName(): String {
+        return when (this) {
+            FileType.Folder -> "文件夹"
+            FileType.Video -> "视频"
+            FileType.Txt -> "文档"
+            FileType.Image -> "图片"
+            FileType.Audio -> "音频"
+            FileType.Other -> "其他文件"
         }
     }
 

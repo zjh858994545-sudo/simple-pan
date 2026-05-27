@@ -98,6 +98,19 @@ sealed interface FileListEffect {
     // [语法] data class 用来携带提示文案，相当于 Java 里一个只读事件对象。
     // [设计] 为什么这样写：上传成功、过大、读取失败都只需要一次性提示，统一成 ShowMessage 后 UI 只负责展示 Snackbar。
     data class ShowMessage(val message: String) : FileListEffect
+
+    // [语法] data class 用来携带 TXT 阅读器跳转需要的参数，相当于 Java 里一个只读导航事件对象。
+    // [设计] 为什么这样写：当前步骤先把“已通过打开校验”的结果从 ViewModel 发出来，后续接入阅读器页面时只替换 UI 层消费方式，不需要改打开校验链路。
+    data class OpenTxtReader(val fileId: String, val fileName: String) : FileListEffect
+
+    // [语法] data class 用来携带视频播放器需要的只读参数，相当于 Java 里一个播放器事件对象。
+    // [设计] 为什么这样写：视频后续会由 Screen 层拉起系统播放器，提前把本地路径和 MIME 放进 Effect，能保持 ViewModel 不依赖 Android Intent。
+    data class OpenVideoPlayer(
+        val fileId: String,
+        val fileName: String,
+        val localPath: String,
+        val mimeType: String
+    ) : FileListEffect
 }
 
 // [语法] sealed interface 类似 Java 里“受限的接口/抽象父类”，实现类型只能在编译期确定，when 分支更安全。
@@ -114,6 +127,10 @@ sealed interface FileListIntent {
     // [语法] data class 用于携带参数，相当于 Java 里一个只保存 folderId/folderName 的事件对象。
     // [设计] 为什么这样写：进入文件夹要同时保存 id 和展示名称，ViewModel 可以更新路径栈并重新观察子目录。
     data class EnterFolder(val folderId: String, val folderName: String) : FileListIntent
+
+    // [语法] data class 用来携带 fileId，相当于 Java 里一个只保存 fileId 的点击事件对象。
+    // [设计] 为什么这样写：普通文件点击不能在 Composable 里直接判断打开细节，统一交给 ViewModel 调 OpenFileUseCase，后续 TXT/视频打开规则都能集中演进。
+    data class OpenFile(val fileId: String) : FileListIntent
 
     // [语法] data object 是无参数单例事件，类似 Java enum 中的 BACK_TO_PARENT。
     // [设计] 为什么这样写：返回上一级不需要 UI 计算目标目录，目标由 ViewModel 根据 folderStack 决定，避免 UI 管业务状态。
