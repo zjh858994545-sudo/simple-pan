@@ -132,6 +132,10 @@ sealed interface FileListIntent {
     // [设计] 为什么这样写：普通文件点击不能在 Composable 里直接判断打开细节，统一交给 ViewModel 调 OpenFileUseCase，后续 TXT/视频打开规则都能集中演进。
     data class OpenFile(val fileId: String) : FileListIntent
 
+    // [语法] data class 用来携带已成功打开的 fileId，相当于 Java 里一个浏览历史事件对象。
+    // [设计] 为什么这样写：视频是否真正启动播放器只有 Screen 层知道，成功后再发 Intent 给 ViewModel 写最近浏览，避免失败打开也进入首页历史。
+    data class RecordOpenedFile(val fileId: String) : FileListIntent
+
     // [语法] data object 是无参数单例事件，类似 Java enum 中的 BACK_TO_PARENT。
     // [设计] 为什么这样写：返回上一级不需要 UI 计算目标目录，目标由 ViewModel 根据 folderStack 决定，避免 UI 管业务状态。
     data object BackToParent : FileListIntent

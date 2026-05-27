@@ -84,6 +84,9 @@ fun FileListScreen(
                     )
                     if (errorMessage != null) {
                         snackbarHostState.showSnackbar(errorMessage)
+                    } else {
+                        // [设计] 为什么这样写：只有系统播放器真正启动成功后才记录最近浏览，避免“没有播放器”等失败场景污染首页历史。
+                        viewModel.onIntent(FileListIntent.RecordOpenedFile(effect.fileId))
                     }
                 }
             }

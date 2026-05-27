@@ -1,5 +1,6 @@
 package com.example.simple_pan.ui.reader
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -73,6 +76,12 @@ fun TxtReaderScreen(
                             fallbackFileName = fileName
                         )
                     )
+                },
+                onPreviousPage = {
+                    viewModel.onIntent(TxtReaderIntent.PreviousPage)
+                },
+                onNextPage = {
+                    viewModel.onIntent(TxtReaderIntent.NextPage)
                 }
             )
             HorizontalDivider()
@@ -119,12 +128,39 @@ private fun TxtReaderHeader(
 private fun TxtReaderBody(
     modifier: Modifier = Modifier,
     state: TxtReaderState,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit
 ) {
+    // [语法] with(...) 是 Kotlin 作用域函数，类似 Java 中把同一个对象作为上下文连续调用方法。
+    // [设计] 为什么这样写：Compose 手势回调里拿到的是像素距离，先把 dp 阈值转换成 px，滑动判断才不会受屏幕密度影响。
+    val swipeThresholdPx = with(LocalDensity.current) { TXT_READER_SWIPE_THRESHOLD_DP.toPx() }
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 16.dp),
+            .padding(vertical = 16.dp)
+            .pointerInput(state.currentPageIndex, state.pageCount) {
+                var totalHorizontalDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        totalHorizontalDrag = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        totalHorizontalDrag += dragAmount
+                    },
+                    onDragEnd = {
+                        // [设计] 为什么这样写：按需求约定左滑返回上一页、右滑进入下一页；边界仍交给 State 控制，首尾页不会越界。
+                        if (totalHorizontalDrag <= -swipeThresholdPx && state.canGoPrevious) {
+                            onPreviousPage()
+                        } else if (totalHorizontalDrag >= swipeThresholdPx && state.canGoNext) {
+                            onNextPage()
+                        }
+                    },
+                    onDragCancel = {
+                        totalHorizontalDrag = 0f
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         when {
@@ -242,3 +278,6 @@ private fun TxtReaderState.toPageIndicatorText(): String {
         "$currentPageNumber / $pageCount"
     }
 }
+
+// [设计] 为什么这样写：滑动阈值用 dp 而不是裸像素，保证不同密度设备上触发距离接近；v1 先固定阈值，后续可按阅读器手势体验微调。
+private val TXT_READER_SWIPE_THRESHOLD_DP = 72.dp

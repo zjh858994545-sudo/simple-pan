@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.ReadTxtFileResult
 import com.example.simple_pan.domain.usecase.ReadTxtFileUseCase
+import com.example.simple_pan.domain.usecase.RecordOpenUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,8 @@ import kotlinx.coroutines.launch
 // [设计] 为什么这样写：阅读器的文件读取由 domain UseCase 处理，ViewModel 只负责把结果转成 UI State，保持 UI 层和文件系统解耦。
 @HiltViewModel
 class TxtReaderViewModel @Inject constructor(
-    private val readTxtFileUseCase: ReadTxtFileUseCase
+    private val readTxtFileUseCase: ReadTxtFileUseCase,
+    private val recordOpenUseCase: RecordOpenUseCase
 ) : ViewModel() {
     // [语法] MutableStateFlow 类似 Java Observable + 当前值缓存；私有可变、公开只读是 Kotlin 常见封装方式。
     // [设计] 为什么这样写：阅读器页面只观察 state，不直接修改 state，所有加载和错误转换都收敛在 ViewModel。
@@ -81,6 +83,7 @@ class TxtReaderViewModel @Inject constructor(
                                 errorMessage = null
                             )
                         }
+                        recordOpenSafely(result.fileId)
                     }
                     ReadTxtFileResult.FileNotFound -> {
                         showReadError("文件不存在或已被删除")
@@ -104,6 +107,15 @@ class TxtReaderViewModel @Inject constructor(
             } catch (throwable: Throwable) {
                 showReadError(throwable.message.toReadFailedMessage())
             }
+        }
+    }
+
+    // [设计] 为什么这样写：最近浏览是首页联动能力，不能因为历史写入偶发失败而打断用户阅读；读取成功后尽力记录即可。
+    private suspend fun recordOpenSafely(fileId: String) {
+        try {
+            recordOpenUseCase(fileId)
+        } catch (throwable: Throwable) {
+            // [设计] 为什么这样写：阅读器正文已经成功展示，浏览历史失败只影响首页联动，不覆盖正文为错误页。
         }
     }
 

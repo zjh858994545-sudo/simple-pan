@@ -9,6 +9,7 @@ import com.example.simple_pan.domain.model.UploadFileResult
 import com.example.simple_pan.domain.model.UploadSizeCheckResult
 import com.example.simple_pan.domain.repository.FileRepository
 import com.example.simple_pan.domain.usecase.OpenFileUseCase
+import com.example.simple_pan.domain.usecase.RecordOpenUseCase
 import com.example.simple_pan.domain.usecase.UploadFileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -29,6 +30,7 @@ import java.util.Locale
 class FileListViewModel @Inject constructor(
     private val fileRepository: FileRepository,
     private val openFileUseCase: OpenFileUseCase,
+    private val recordOpenUseCase: RecordOpenUseCase,
     private val uploadFileUseCase: UploadFileUseCase
 ) : ViewModel() {
     // [语法] MutableStateFlow 类似 Java Observable + 当前值缓存；私有可变、公开只读是 Kotlin 常见封装方式。
@@ -70,6 +72,9 @@ class FileListViewModel @Inject constructor(
             }
             is FileListIntent.OpenFile -> {
                 openFile(intent.fileId)
+            }
+            is FileListIntent.RecordOpenedFile -> {
+                recordOpenedFile(intent.fileId)
             }
             is FileListIntent.EnterFolder -> {
                 val currentState = _state.value
@@ -266,6 +271,17 @@ class FileListViewModel @Inject constructor(
             }
             FileListIntent.ConfirmMove -> {
                 confirmMove()
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：视频打开是否成功由 Screen 判断，ViewModel 只接收“已经打开”的事实并写历史，首页通过 Room Flow 自动刷新最近浏览。
+    private fun recordOpenedFile(fileId: String) {
+        viewModelScope.launch {
+            try {
+                recordOpenUseCase(fileId)
+            } catch (throwable: Throwable) {
+                showOpenFileMessage(throwable.toRecordOpenMessage())
             }
         }
     }
@@ -788,6 +804,17 @@ class FileListViewModel @Inject constructor(
             "打开失败，请重试"
         } else {
             "打开失败：$detail"
+        }
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 OpenHistoryErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：最近浏览写入失败不等同于播放器打开失败，文案单独区分能帮助验证首页联动时定位问题。
+    private fun Throwable.toRecordOpenMessage(): String {
+        val detail = message
+        return if (detail == null || detail.isBlank()) {
+            "最近浏览记录失败"
+        } else {
+            "最近浏览记录失败：$detail"
         }
     }
 
