@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- [设计] 为什么这样写：阶段 4 上传文件实际保存到 context.filesDir/uploads，只暴露这个子目录给 FileProvider，避免外部播放器获得整个私有目录的访问面。 -->
+    <files-path
+        name="uploaded_files"
+        path="uploads/" />
+</paths>
