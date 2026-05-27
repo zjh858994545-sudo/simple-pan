@@ -2,6 +2,11 @@ package com.example.simple_pan.ui.file
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.util.AndroidRuntimeException
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,12 +45,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import java.io.File
 
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI 内容，数据来源仍然是 Room -> Repository -> ViewModel -> State。
 @Composable
@@ -56,18 +64,26 @@ fun FileListScreen(
     // [设计] 为什么这样写：collectAsStateWithLifecycle 会随页面生命周期自动开始/停止收集，避免后台页面继续消耗资源。
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    // [设计] 为什么这样写：系统播放器属于 Android 平台能力，需要由 Screen 层拿到 Context 启动外部 Intent，避免 ViewModel 直接依赖 Activity。
+    val context = LocalContext.current
     // [语法] LaunchedEffect 会在 Composable 进入组合时启动协程，并在离开组合时自动取消。
     // [设计] 为什么这样写：Snackbar 是一次性 Effect，必须在 Screen 层收集；这样 ViewModel 只发事件，不直接依赖 Compose UI 组件。
-    LaunchedEffect(viewModel) {
+    LaunchedEffect(viewModel, context) {
         viewModel.effect.collect { effect ->
-            // [设计] 为什么这样写：当前步骤只验证“点击 -> OpenFileUseCase -> Effect”链路，TXT 页面和系统播放器会在后续步骤把这里的占位 Snackbar 换成真实打开动作。
+            // [设计] 为什么这样写：Effect 在 Screen 层集中消费；TXT 暂时保留占位提示，视频则在这里转换成 Android 系统 Intent。
             when (effect) {
                 is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
                 is FileListEffect.OpenTxtReader -> {
                     snackbarHostState.showSnackbar("TXT 阅读器下一步接入：${effect.fileName}")
                 }
                 is FileListEffect.OpenVideoPlayer -> {
-                    snackbarHostState.showSnackbar("视频播放器下一步接入：${effect.fileName}")
+                    val errorMessage = context.openVideoFile(
+                        localPath = effect.localPath,
+                        mimeType = effect.mimeType
+                    )
+                    if (errorMessage != null) {
+                        snackbarHostState.showSnackbar(errorMessage)
+                    }
                 }
             }
         }
@@ -340,6 +356,53 @@ private fun UploadFloatingActionButton(
 
 // [设计] 为什么这样写：阶段 4 先支持单文件上传且不限制文件种类，后续 TXT 阅读器和视频播放会根据文件类型分别处理。
 private val UPLOAD_MIME_TYPES = arrayOf("*/*")
+
+// [设计] 为什么这样写：FileProvider 的 authority 必须和 Manifest 中的 `${applicationId}.fileprovider` 保持一致，Screen 只拼接规则，不暴露真实 file:// 路径。
+private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider"
+
+// [设计] 为什么这样写：部分上传来源可能没有准确 MIME，系统播放器用 video/* 兜底比空字符串更容易匹配到可用 App。
+private const val DEFAULT_VIDEO_MIME_TYPE = "video/*"
+
+// [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 VideoOpeners.openVideoFile(context, path, mimeType)。
+// [设计] 为什么这样写：打开系统播放器是 UI 平台动作，放在 Screen 文件的局部 helper 中，既能复用 FileProvider 规则，也不把 Android Intent 泄漏进 ViewModel。
+private fun Context.openVideoFile(localPath: String, mimeType: String): String? {
+    val videoFile = File(localPath)
+    if (!videoFile.exists() || !videoFile.isFile) {
+        return "本地视频文件不存在，请重新上传"
+    }
+
+    val contentUri = try {
+        FileProvider.getUriForFile(
+            this,
+            packageName + FILE_PROVIDER_AUTHORITY_SUFFIX,
+            videoFile
+        )
+    } catch (exception: IllegalArgumentException) {
+        return "视频文件无法授权给系统播放器"
+    }
+
+    val safeMimeType = if (mimeType.isBlank()) {
+        DEFAULT_VIDEO_MIME_TYPE
+    } else {
+        mimeType
+    }
+    val videoIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(contentUri, safeMimeType)
+        clipData = ClipData.newUri(contentResolver, "video", contentUri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    return try {
+        startActivity(videoIntent)
+        null
+    } catch (exception: ActivityNotFoundException) {
+        "没有可用的视频播放器"
+    } catch (exception: SecurityException) {
+        "无法授权视频文件给播放器"
+    } catch (exception: AndroidRuntimeException) {
+        "无法启动视频播放器"
+    }
+}
 
 // [设计] 为什么这样写：底部操作栏只依赖 selectedCount，就能先完成管理态交互骨架；真正的分享/删除/移动/重命名逻辑留给后续步骤分别接入。
 @Composable
