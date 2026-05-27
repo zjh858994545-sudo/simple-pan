@@ -11,8 +11,11 @@ import com.example.simple_pan.domain.usecase.UploadFileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -29,6 +32,11 @@ class FileListViewModel @Inject constructor(
     // [设计] 为什么这样写：UI 只能观察 state，不能直接改 state，所有状态变化都通过 ViewModel 处理。
     private val _state = MutableStateFlow(FileListState())
     val state: StateFlow<FileListState> = _state.asStateFlow()
+
+    // [语法] SharedFlow 类似 Java 的事件流；和 StateFlow 不同，它不保存“当前状态”，更适合 Toast/Snackbar 这种一次性事件。
+    // [设计] 为什么这样写：上传成功或失败提示不应该写进 FileListState，否则重组后可能重复显示；Effect 流能保持 MVI 的 State/Effect 边界。
+    private val _effect = MutableSharedFlow<FileListEffect>(extraBufferCapacity = 1)
+    val effect: SharedFlow<FileListEffect> = _effect.asSharedFlow()
 
     private var loadJob: Job? = null
     private var currentFolderFiles: List<CloudFile> = emptyList()
@@ -277,37 +285,40 @@ class FileListViewModel @Inject constructor(
                         _state.update { currentState ->
                             currentState.copy(isUploading = false)
                         }
+                        showUploadMessage("上传成功：${result.file.name}")
                     }
                     is UploadFileResult.RejectedBySize -> {
-                        showUploadError(result.reason.toUploadErrorMessage())
+                        showUploadMessage(result.reason.toUploadErrorMessage())
                     }
                     UploadFileResult.TargetFolderUnavailable -> {
-                        showUploadError("目标文件夹不存在或已被删除")
+                        showUploadMessage("目标文件夹不存在或已被删除")
                     }
                     UploadFileResult.SourceUnavailable -> {
-                        showUploadError("文件读取失败，请重新选择")
+                        showUploadMessage("文件读取失败，请重新选择")
                     }
                     UploadFileResult.StorageUnavailable -> {
-                        showUploadError("App 私有存储不可用，请稍后重试")
+                        showUploadMessage("App 私有存储不可用，请稍后重试")
                     }
                     is UploadFileResult.Failed -> {
-                        showUploadError(result.message.toUploadFailedMessage())
+                        showUploadMessage(result.message.toUploadFailedMessage())
                     }
                 }
             } catch (throwable: Throwable) {
-                showUploadError(throwable.toUploadMessage())
+                showUploadMessage(throwable.toUploadMessage())
             }
         }
     }
 
-    // [设计] 为什么这样写：本步骤先复用页面级错误承载上传失败，下一步再把它升级成 Snackbar/一次性提示，避免这一步扩大 UI 状态范围。
-    private fun showUploadError(message: String) {
+    // [语法] suspend fun 表示挂起函数，类似 Java Future/回调；这里需要在协程里发送 SharedFlow 事件。
+    // [设计] 为什么这样写：上传提示只通过 Effect 发出一次，同时把 isUploading 复位，避免失败后 + 按钮一直处于不可用状态。
+    private suspend fun showUploadMessage(message: String) {
         _state.update { currentState ->
             currentState.copy(
                 isUploading = false,
-                errorMessage = message
+                errorMessage = null
             )
         }
+        _effect.emit(FileListEffect.ShowMessage(message))
     }
 
     // [设计] 为什么这样写：确认重命名包含校验、查库和写库，集中在 ViewModel 能保持 UI 弹窗足够薄，也让 MVI 状态变化可追踪。

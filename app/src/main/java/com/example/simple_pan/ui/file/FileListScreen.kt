@@ -26,11 +26,16 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +55,16 @@ fun FileListScreen(
     // [语法] by 是 Kotlin 委托语法，这里把 State<FileListState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
     // [设计] 为什么这样写：collectAsStateWithLifecycle 会随页面生命周期自动开始/停止收集，避免后台页面继续消耗资源。
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    // [语法] LaunchedEffect 会在 Composable 进入组合时启动协程，并在离开组合时自动取消。
+    // [设计] 为什么这样写：Snackbar 是一次性 Effect，必须在 Screen 层收集；这样 ViewModel 只发事件，不直接依赖 Compose UI 组件。
+    LaunchedEffect(viewModel) {
+        viewModel.effect.collect { effect ->
+            when (effect) {
+                is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+            }
+        }
+    }
     // [语法] rememberLauncherForActivityResult 是 Compose 的状态保存 API，尾随 lambda 会在系统选择器返回结果时执行。
     // [设计] 为什么这样写：SAF 文件选择属于 Activity Result API，放在 Screen 层最合适；选中后的 Uri 立即交给 ViewModel，业务层不依赖 Composable。
     val uploadFileLauncher = rememberLauncherForActivityResult(
@@ -60,87 +75,96 @@ fun FileListScreen(
         }
     }
 
-    FileListContent(
-        state = state,
-        onRetry = {
-            viewModel.onIntent(FileListIntent.Retry)
-        },
-        onFolderClick = { folder ->
-            viewModel.onIntent(
-                FileListIntent.EnterFolder(
-                    folderId = folder.fileId,
-                    folderName = folder.name
-                )
-            )
-        },
-        onBackToParent = {
-            viewModel.onIntent(FileListIntent.BackToParent)
-        },
-        onFilterChange = { filter ->
-            viewModel.onIntent(FileListIntent.ChangeFilter(filter))
-        },
-        onEnterManageMode = {
-            viewModel.onIntent(FileListIntent.EnterManageMode)
-        },
-        onExitManageMode = {
-            viewModel.onIntent(FileListIntent.ExitManageMode)
-        },
-        onToggleFileSelection = { file ->
-            viewModel.onIntent(FileListIntent.ToggleFileSelection(file.fileId))
-        },
-        onToggleSelectAllVisible = {
-            viewModel.onIntent(FileListIntent.ToggleSelectAllVisible)
-        },
-        onOpenRenameDialog = {
-            viewModel.onIntent(FileListIntent.OpenRenameDialog)
-        },
-        onDismissRenameDialog = {
-            viewModel.onIntent(FileListIntent.DismissRenameDialog)
-        },
-        onRenameInputChange = { inputName ->
-            viewModel.onIntent(FileListIntent.ChangeRenameInput(inputName))
-        },
-        onConfirmRename = {
-            viewModel.onIntent(FileListIntent.ConfirmRename)
-        },
-        onOpenDeleteDialog = {
-            viewModel.onIntent(FileListIntent.OpenDeleteDialog)
-        },
-        onDismissDeleteDialog = {
-            viewModel.onIntent(FileListIntent.DismissDeleteDialog)
-        },
-        onConfirmDelete = {
-            viewModel.onIntent(FileListIntent.ConfirmDelete)
-        },
-        onOpenMoveDialog = {
-            viewModel.onIntent(FileListIntent.OpenMoveDialog)
-        },
-        onDismissMoveDialog = {
-            viewModel.onIntent(FileListIntent.DismissMoveDialog)
-        },
-        onEnterMoveTargetFolder = { folder ->
-            viewModel.onIntent(
-                FileListIntent.EnterMoveTargetFolder(
-                    folderId = folder.fileId,
-                    folderName = folder.name
-                )
-            )
-        },
-        onBackMoveTargetFolder = {
-            viewModel.onIntent(FileListIntent.BackMoveTargetFolder)
-        },
-        onConfirmMove = {
-            viewModel.onIntent(FileListIntent.ConfirmMove)
-        },
-        onUploadClick = {
-            uploadFileLauncher.launch(UPLOAD_MIME_TYPES)
+    // [设计] 为什么这样写：Scaffold 只承载 SnackbarHost，不改变文件列表的数据来源；上传提示不会覆盖或替换列表内容。
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
         }
-    )
+    ) { contentPadding ->
+        FileListContent(
+            modifier = Modifier.padding(contentPadding),
+            state = state,
+            onRetry = {
+                viewModel.onIntent(FileListIntent.Retry)
+            },
+            onFolderClick = { folder ->
+                viewModel.onIntent(
+                    FileListIntent.EnterFolder(
+                        folderId = folder.fileId,
+                        folderName = folder.name
+                    )
+                )
+            },
+            onBackToParent = {
+                viewModel.onIntent(FileListIntent.BackToParent)
+            },
+            onFilterChange = { filter ->
+                viewModel.onIntent(FileListIntent.ChangeFilter(filter))
+            },
+            onEnterManageMode = {
+                viewModel.onIntent(FileListIntent.EnterManageMode)
+            },
+            onExitManageMode = {
+                viewModel.onIntent(FileListIntent.ExitManageMode)
+            },
+            onToggleFileSelection = { file ->
+                viewModel.onIntent(FileListIntent.ToggleFileSelection(file.fileId))
+            },
+            onToggleSelectAllVisible = {
+                viewModel.onIntent(FileListIntent.ToggleSelectAllVisible)
+            },
+            onOpenRenameDialog = {
+                viewModel.onIntent(FileListIntent.OpenRenameDialog)
+            },
+            onDismissRenameDialog = {
+                viewModel.onIntent(FileListIntent.DismissRenameDialog)
+            },
+            onRenameInputChange = { inputName ->
+                viewModel.onIntent(FileListIntent.ChangeRenameInput(inputName))
+            },
+            onConfirmRename = {
+                viewModel.onIntent(FileListIntent.ConfirmRename)
+            },
+            onOpenDeleteDialog = {
+                viewModel.onIntent(FileListIntent.OpenDeleteDialog)
+            },
+            onDismissDeleteDialog = {
+                viewModel.onIntent(FileListIntent.DismissDeleteDialog)
+            },
+            onConfirmDelete = {
+                viewModel.onIntent(FileListIntent.ConfirmDelete)
+            },
+            onOpenMoveDialog = {
+                viewModel.onIntent(FileListIntent.OpenMoveDialog)
+            },
+            onDismissMoveDialog = {
+                viewModel.onIntent(FileListIntent.DismissMoveDialog)
+            },
+            onEnterMoveTargetFolder = { folder ->
+                viewModel.onIntent(
+                    FileListIntent.EnterMoveTargetFolder(
+                        folderId = folder.fileId,
+                        folderName = folder.name
+                    )
+                )
+            },
+            onBackMoveTargetFolder = {
+                viewModel.onIntent(FileListIntent.BackMoveTargetFolder)
+            },
+            onConfirmMove = {
+                viewModel.onIntent(FileListIntent.ConfirmMove)
+            },
+            onUploadClick = {
+                uploadFileLauncher.launch(UPLOAD_MIME_TYPES)
+            }
+        )
+    }
 }
 
 // [设计] 为什么这样写：把纯展示内容拆出来，后续写 Preview 或 UI 测试时可以直接传入 State，不需要真的启动 Hilt 和数据库。
 @Composable
 private fun FileListContent(
+    modifier: Modifier = Modifier,
     state: FileListState,
     onRetry: () -> Unit,
     onFolderClick: (CloudFile) -> Unit,
@@ -164,7 +188,7 @@ private fun FileListContent(
     onConfirmMove: () -> Unit,
     onUploadClick: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = modifier.fillMaxSize()) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
@@ -274,17 +298,31 @@ private fun UploadFloatingActionButton(
             .padding(20.dp)
             .width(56.dp)
             .height(56.dp),
+        containerColor = if (isUploading) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        },
         onClick = {
             if (!isUploading) {
                 onUploadClick()
             }
         }
     ) {
-        Text(
-            text = if (isUploading) "..." else "+",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (isUploading) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .width(24.dp)
+                    .height(24.dp),
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text = "+",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 

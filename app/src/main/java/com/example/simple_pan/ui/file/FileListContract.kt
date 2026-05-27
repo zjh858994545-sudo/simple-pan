@@ -92,6 +92,14 @@ data class FileListState(
     val initializedFromMock: Boolean = false
 )
 
+// [语法] sealed interface 表示“受限的接口继承体系”，类似 Java 中固定子类集合的抽象类型。
+// [设计] 为什么这样写：Snackbar 是一次性提示，不属于可持久 UI State；用 Effect 单独表达，避免屏幕旋转或重组时重复显示旧提示。
+sealed interface FileListEffect {
+    // [语法] data class 用来携带提示文案，相当于 Java 里一个只读事件对象。
+    // [设计] 为什么这样写：上传成功、过大、读取失败都只需要一次性提示，统一成 ShowMessage 后 UI 只负责展示 Snackbar。
+    data class ShowMessage(val message: String) : FileListEffect
+}
+
 // [语法] sealed interface 类似 Java 里“受限的接口/抽象父类”，实现类型只能在编译期确定，when 分支更安全。
 // [设计] 为什么这样写：用户行为统一收敛成 Intent，后续加入进入文件夹、筛选、排序时不会把点击逻辑散落到 Composable。
 sealed interface FileListIntent {
