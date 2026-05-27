@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import com.example.simple_pan.domain.model.UploadFileResult
+import com.example.simple_pan.domain.model.UploadSizeCheckResult
 import com.example.simple_pan.domain.repository.FileRepository
+import com.example.simple_pan.domain.usecase.UploadFileUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -16,10 +19,11 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 // [语法] @HiltViewModel 告诉 Hilt 这个 ViewModel 由依赖注入创建，类似 Java 项目里用 DI 容器创建 Controller/ViewModel。
-// [设计] 为什么这样写：ViewModel 依赖 domain 层 FileRepository 接口，不直接认识 Room、DAO 或 mock JSON，保持 UI 层边界干净。
+// [设计] 为什么这样写：ViewModel 依赖 domain 层 Repository/UseCase，不直接认识 Room、DAO、SAF 复制细节或 mock JSON，保持 UI 层边界干净。
 @HiltViewModel
 class FileListViewModel @Inject constructor(
-    private val fileRepository: FileRepository
+    private val fileRepository: FileRepository,
+    private val uploadFileUseCase: UploadFileUseCase
 ) : ViewModel() {
     // [语法] MutableStateFlow 类似 Java Observable + 当前值缓存；私有可变、公开只读是 Kotlin 常见封装方式。
     // [设计] 为什么这样写：UI 只能观察 state，不能直接改 state，所有状态变化都通过 ViewModel 处理。
@@ -49,6 +53,9 @@ class FileListViewModel @Inject constructor(
                     folderStack = currentState.folderStack,
                     shouldInitializeMock = true
                 )
+            }
+            is FileListIntent.UploadPickedFile -> {
+                uploadPickedFile(intent.uriString)
             }
             is FileListIntent.EnterFolder -> {
                 val currentState = _state.value
@@ -246,6 +253,60 @@ class FileListViewModel @Inject constructor(
             FileListIntent.ConfirmMove -> {
                 confirmMove()
             }
+        }
+    }
+
+    // [设计] 为什么这样写：上传目标目录取自当前 State，UI 只负责把 SAF Uri 交回来；成功后的列表刷新继续依赖 Room Flow，不在这里手动插入列表项。
+    private fun uploadPickedFile(uriString: String) {
+        if (_state.value.isUploading) {
+            return
+        }
+
+        val targetFolderId = _state.value.currentFolderId
+        _state.update { currentState ->
+            currentState.copy(
+                isUploading = true,
+                errorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                when (val result = uploadFileUseCase(uriString, targetFolderId)) {
+                    is UploadFileResult.Uploaded -> {
+                        _state.update { currentState ->
+                            currentState.copy(isUploading = false)
+                        }
+                    }
+                    is UploadFileResult.RejectedBySize -> {
+                        showUploadError(result.reason.toUploadErrorMessage())
+                    }
+                    UploadFileResult.TargetFolderUnavailable -> {
+                        showUploadError("目标文件夹不存在或已被删除")
+                    }
+                    UploadFileResult.SourceUnavailable -> {
+                        showUploadError("文件读取失败，请重新选择")
+                    }
+                    UploadFileResult.StorageUnavailable -> {
+                        showUploadError("App 私有存储不可用，请稍后重试")
+                    }
+                    is UploadFileResult.Failed -> {
+                        showUploadError(result.message.toUploadFailedMessage())
+                    }
+                }
+            } catch (throwable: Throwable) {
+                showUploadError(throwable.toUploadMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：本步骤先复用页面级错误承载上传失败，下一步再把它升级成 Snackbar/一次性提示，避免这一步扩大 UI 状态范围。
+    private fun showUploadError(message: String) {
+        _state.update { currentState ->
+            currentState.copy(
+                isUploading = false,
+                errorMessage = message
+            )
         }
     }
 
@@ -626,6 +687,32 @@ class FileListViewModel @Inject constructor(
         } else {
             "移动失败：$detail"
         }
+    }
+
+    // [语法] 这是 UploadSizeCheckResult 的扩展函数，相当于 Java 静态工具方法 UploadErrors.toMessage(result)。
+    // [设计] 为什么这样写：上传大小错误文案集中转换，后续 UI 改成 Snackbar 时可以直接复用这套业务文案。
+    private fun UploadSizeCheckResult.toUploadErrorMessage(): String {
+        return when (this) {
+            UploadSizeCheckResult.Allowed -> "文件可以上传"
+            UploadSizeCheckResult.UnknownSize -> "无法读取文件大小，请换一个文件重试"
+            is UploadSizeCheckResult.TooLarge -> "文件超过 100MB，无法上传"
+        }
+    }
+
+    // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 UploadErrors.failedMessage(message)。
+    // [设计] 为什么这样写：底层失败可能没有 message，统一兜底能避免页面显示空错误。
+    private fun String?.toUploadFailedMessage(): String {
+        return if (isNullOrBlank()) {
+            "上传失败，请重试"
+        } else {
+            "上传失败：$this"
+        }
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 UploadErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：异常转上传文案和列表加载文案分开，避免把“文件列表加载失败”误显示在上传场景。
+    private fun Throwable.toUploadMessage(): String {
+        return message.toUploadFailedMessage()
     }
 
     private fun loadFiles(

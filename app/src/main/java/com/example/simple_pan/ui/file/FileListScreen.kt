@@ -1,5 +1,7 @@
 package com.example.simple_pan.ui.file
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +50,15 @@ fun FileListScreen(
     // [语法] by 是 Kotlin 委托语法，这里把 State<FileListState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
     // [设计] 为什么这样写：collectAsStateWithLifecycle 会随页面生命周期自动开始/停止收集，避免后台页面继续消耗资源。
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // [语法] rememberLauncherForActivityResult 是 Compose 的状态保存 API，尾随 lambda 会在系统选择器返回结果时执行。
+    // [设计] 为什么这样写：SAF 文件选择属于 Activity Result API，放在 Screen 层最合适；选中后的 Uri 立即交给 ViewModel，业务层不依赖 Composable。
+    val uploadFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.onIntent(FileListIntent.UploadPickedFile(uri.toString()))
+        }
+    }
 
     FileListContent(
         state = state,
@@ -119,6 +131,9 @@ fun FileListScreen(
         },
         onConfirmMove = {
             viewModel.onIntent(FileListIntent.ConfirmMove)
+        },
+        onUploadClick = {
+            uploadFileLauncher.launch(UPLOAD_MIME_TYPES)
         }
     )
 }
@@ -146,95 +161,135 @@ private fun FileListContent(
     onDismissMoveDialog: () -> Unit,
     onEnterMoveTargetFolder: (CloudFile) -> Unit,
     onBackMoveTargetFolder: () -> Unit,
-    onConfirmMove: () -> Unit
+    onConfirmMove: () -> Unit,
+    onUploadClick: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            FileListHeader(
-                folderName = state.currentFolderName,
-                fileCount = state.files.size,
-                canBackToParent = state.folderStack.isNotEmpty(),
-                isManageMode = state.isManageMode,
-                selectedCount = state.selectedFileIds.size,
-                canSelectAllVisible = state.files.isNotEmpty(),
-                isAllVisibleSelected = state.files.isNotEmpty() &&
-                    state.files.all { file -> file.fileId in state.selectedFileIds },
-                onBackToParent = onBackToParent,
-                onEnterManageMode = onEnterManageMode,
-                onExitManageMode = onExitManageMode,
-                onToggleSelectAllVisible = onToggleSelectAllVisible
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            FileFilterBar(
-                selectedFilter = state.filter,
-                onFilterChange = onFilterChange
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            FileSortSummary(sortType = state.sortType)
-            Spacer(modifier = Modifier.height(12.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                FileListHeader(
+                    folderName = state.currentFolderName,
+                    fileCount = state.files.size,
+                    canBackToParent = state.folderStack.isNotEmpty(),
+                    isManageMode = state.isManageMode,
+                    selectedCount = state.selectedFileIds.size,
+                    canSelectAllVisible = state.files.isNotEmpty(),
+                    isAllVisibleSelected = state.files.isNotEmpty() &&
+                        state.files.all { file -> file.fileId in state.selectedFileIds },
+                    onBackToParent = onBackToParent,
+                    onEnterManageMode = onEnterManageMode,
+                    onExitManageMode = onExitManageMode,
+                    onToggleSelectAllVisible = onToggleSelectAllVisible
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                FileFilterBar(
+                    selectedFilter = state.filter,
+                    onFilterChange = onFilterChange
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                FileSortSummary(sortType = state.sortType)
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // [设计] 为什么这样写：列表区域用 weight 占据剩余空间，管理态底部操作栏才能稳定固定在底部，不会被 LazyColumn 撑出屏幕。
-            Box(modifier = Modifier.weight(1f)) {
-                when {
-                    state.isLoading -> FileListLoading()
-                    state.errorMessage != null -> FileListError(
-                        message = state.errorMessage,
-                        onRetry = onRetry
+                // [设计] 为什么这样写：列表区域用 weight 占据剩余空间，管理态底部操作栏才能稳定固定在底部，不会被 LazyColumn 撑出屏幕。
+                Box(modifier = Modifier.weight(1f)) {
+                    when {
+                        state.isLoading -> FileListLoading()
+                        state.errorMessage != null -> FileListError(
+                            message = state.errorMessage,
+                            onRetry = onRetry
+                        )
+                        state.files.isEmpty() -> FileListEmpty(filter = state.filter)
+                        else -> FileListItems(
+                            files = state.files,
+                            isManageMode = state.isManageMode,
+                            selectedFileIds = state.selectedFileIds,
+                            onFolderClick = onFolderClick,
+                            onToggleFileSelection = onToggleFileSelection
+                        )
+                    }
+                }
+
+                if (state.isManageMode) {
+                    FileManageActionBar(
+                        selectedCount = state.selectedFileIds.size,
+                        onShareClick = {},
+                        onDeleteClick = onOpenDeleteDialog,
+                        onMoveClick = onOpenMoveDialog,
+                        onRenameClick = onOpenRenameDialog
                     )
-                    state.files.isEmpty() -> FileListEmpty(filter = state.filter)
-                    else -> FileListItems(
-                        files = state.files,
-                        isManageMode = state.isManageMode,
-                        selectedFileIds = state.selectedFileIds,
-                        onFolderClick = onFolderClick,
-                        onToggleFileSelection = onToggleFileSelection
+                }
+
+                if (state.renameDialog.isVisible) {
+                    RenameFileDialog(
+                        dialogState = state.renameDialog,
+                        onNameChange = onRenameInputChange,
+                        onDismiss = onDismissRenameDialog,
+                        onConfirm = onConfirmRename
+                    )
+                }
+
+                if (state.deleteDialog.isVisible) {
+                    DeleteFilesDialog(
+                        dialogState = state.deleteDialog,
+                        onDismiss = onDismissDeleteDialog,
+                        onConfirm = onConfirmDelete
+                    )
+                }
+
+                if (state.moveDialog.isVisible) {
+                    MoveFilesDialog(
+                        dialogState = state.moveDialog,
+                        onEnterFolder = onEnterMoveTargetFolder,
+                        onBackToParent = onBackMoveTargetFolder,
+                        onDismiss = onDismissMoveDialog,
+                        onConfirm = onConfirmMove
                     )
                 }
             }
 
-            if (state.isManageMode) {
-                FileManageActionBar(
-                    selectedCount = state.selectedFileIds.size,
-                    onShareClick = {},
-                    onDeleteClick = onOpenDeleteDialog,
-                    onMoveClick = onOpenMoveDialog,
-                    onRenameClick = onOpenRenameDialog
-                )
-            }
-
-            if (state.renameDialog.isVisible) {
-                RenameFileDialog(
-                    dialogState = state.renameDialog,
-                    onNameChange = onRenameInputChange,
-                    onDismiss = onDismissRenameDialog,
-                    onConfirm = onConfirmRename
-                )
-            }
-
-            if (state.deleteDialog.isVisible) {
-                DeleteFilesDialog(
-                    dialogState = state.deleteDialog,
-                    onDismiss = onDismissDeleteDialog,
-                    onConfirm = onConfirmDelete
-                )
-            }
-
-            if (state.moveDialog.isVisible) {
-                MoveFilesDialog(
-                    dialogState = state.moveDialog,
-                    onEnterFolder = onEnterMoveTargetFolder,
-                    onBackToParent = onBackMoveTargetFolder,
-                    onDismiss = onDismissMoveDialog,
-                    onConfirm = onConfirmMove
+            if (!state.isManageMode) {
+                UploadFloatingActionButton(
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                    isUploading = state.isUploading,
+                    onUploadClick = onUploadClick
                 )
             }
         }
     }
 }
+
+// [设计] 为什么这样写：上传入口固定在文件页右下角，符合“+ 按钮添加文件”的常见交互；管理模式隐藏它，避免和底部操作栏语义冲突。
+@Composable
+private fun UploadFloatingActionButton(
+    modifier: Modifier,
+    isUploading: Boolean,
+    onUploadClick: () -> Unit
+) {
+    FloatingActionButton(
+        modifier = modifier
+            .padding(20.dp)
+            .width(56.dp)
+            .height(56.dp),
+        onClick = {
+            if (!isUploading) {
+                onUploadClick()
+            }
+        }
+    ) {
+        Text(
+            text = if (isUploading) "..." else "+",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+// [设计] 为什么这样写：阶段 4 先支持单文件上传且不限制文件种类，后续 TXT 阅读器和视频播放会根据文件类型分别处理。
+private val UPLOAD_MIME_TYPES = arrayOf("*/*")
 
 // [设计] 为什么这样写：底部操作栏只依赖 selectedCount，就能先完成管理态交互骨架；真正的分享/删除/移动/重命名逻辑留给后续步骤分别接入。
 @Composable

@@ -81,6 +81,8 @@ data class FileListState(
     val selectedFileIds: Set<String> = emptySet(),
     // [设计] 为什么这样写：用一个布尔值明确区分普通浏览态和管理态，后续底部操作栏、勾选圆圈都只依赖这一个状态来源。
     val isManageMode: Boolean = false,
+    // [设计] 为什么这样写：上传是异步动作，先用布尔值防止重复点击；更细的进度和提示会在下一步单独完善。
+    val isUploading: Boolean = false,
     val isLoading: Boolean = true,
     // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null 表示。
     val errorMessage: String? = null,
@@ -96,6 +98,10 @@ sealed interface FileListIntent {
     // [语法] data object 是 Kotlin 单例对象，类似 Java enum 单例值；这里不需要额外字段。
     // [设计] 为什么这样写：Retry 表示用户要求重新初始化并观察列表，UI 不直接调用 Repository。
     data object Retry : FileListIntent
+
+    // [语法] data class 用来携带 SAF 返回的 Uri 字符串，相当于 Java 事件对象 UploadPickedFile。
+    // [设计] 为什么这样写：系统文件选择器属于 UI 能力，但上传业务仍由 ViewModel/UseCase 处理，保持“选择结果 -> Intent -> 状态/业务”的 MVI 链路。
+    data class UploadPickedFile(val uriString: String) : FileListIntent
 
     // [语法] data class 用于携带参数，相当于 Java 里一个只保存 folderId/folderName 的事件对象。
     // [设计] 为什么这样写：进入文件夹要同时保存 id 和展示名称，ViewModel 可以更新路径栈并重新观察子目录。
