@@ -58,6 +58,7 @@ import java.io.File
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI 内容，数据来源仍然是 Room -> Repository -> ViewModel -> State。
 @Composable
 fun FileListScreen(
+    onOpenTxtReader: (fileId: String, fileName: String) -> Unit,
     viewModel: FileListViewModel = hiltViewModel()
 ) {
     // [语法] by 是 Kotlin 委托语法，这里把 State<FileListState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
@@ -74,7 +75,7 @@ fun FileListScreen(
             when (effect) {
                 is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
                 is FileListEffect.OpenTxtReader -> {
-                    snackbarHostState.showSnackbar("TXT 阅读器下一步接入：${effect.fileName}")
+                    onOpenTxtReader(effect.fileId, effect.fileName)
                 }
                 is FileListEffect.OpenVideoPlayer -> {
                     val errorMessage = context.openVideoFile(

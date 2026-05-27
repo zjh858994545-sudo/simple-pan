@@ -10,12 +10,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.simple_pan.ui.file.FileListScreen
 import com.example.simple_pan.ui.home.PanHomeScreen
+import com.example.simple_pan.ui.reader.TxtReaderScreen
 
 // [设计] 为什么这样写：AppNavGraph 是全局导航入口，Activity 不关心具体页面，后续 Reader/Share 页面也能统一接进这里。
 @Composable
@@ -23,23 +26,27 @@ fun AppNavGraph() {
     // [语法] rememberNavController() 会在 Compose 重组间记住 NavController，类似 Java 中把导航控制器保存在成员变量里。
     // [设计] 为什么这样写：NavController 必须在顶层稳定持有，否则重组时导航栈可能被重建，Tab 返回状态也会丢失。
     val navController = rememberNavController()
+    val currentTopLevelRoute = navController.currentTopLevelRoute()
 
     Scaffold(
         bottomBar = {
-            SimplePanBottomBar(
-                currentRoute = navController.currentTopLevelRoute(),
-                onDestinationClick = { destination ->
-                    navController.navigate(destination.route) {
-                        // [语法] lambda 里直接访问 destination，是 Kotlin 尾随 lambda 捕获外部变量的写法，类似 Java 匿名类闭包。
-                        // [设计] 为什么这样写：切换底部 Tab 时回到图的起点，并保存/恢复状态，避免重复点 Tab 堆出多个相同页面。
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+            // [设计] 为什么这样写：阅读器是沉浸式二级页面，不属于底部 Tab；只在顶层页面显示底部导航，避免阅读时误触切换页面。
+            if (currentTopLevelRoute != null) {
+                SimplePanBottomBar(
+                    currentRoute = currentTopLevelRoute,
+                    onDestinationClick = { destination ->
+                        navController.navigate(destination.route) {
+                            // [语法] lambda 里直接访问 destination，是 Kotlin 尾随 lambda 捕获外部变量的写法，类似 Java 匿名类闭包。
+                            // [设计] 为什么这样写：切换底部 Tab 时回到图的起点，并保存/恢复状态，避免重复点 Tab 堆出多个相同页面。
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         // [语法] innerPadding 是 Scaffold 通过 lambda 传入的参数，类似 Java 回调参数；Modifier.padding 用它避开底部导航栏。
@@ -53,7 +60,35 @@ fun AppNavGraph() {
                 PanHomeScreen()
             }
             composable(Routes.FILES) {
-                FileListScreen()
+                FileListScreen(
+                    onOpenTxtReader = { fileId, fileName ->
+                        navController.navigate(Routes.txtReader(fileId, fileName))
+                    }
+                )
+            }
+            composable(
+                route = Routes.TXT_READER_ROUTE,
+                arguments = listOf(
+                    navArgument(Routes.TXT_READER_FILE_ID_ARG) {
+                        type = NavType.StringType
+                    },
+                    navArgument(Routes.TXT_READER_FILE_NAME_ARG) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }
+                )
+            ) { backStackEntry ->
+                // [语法] ?. 是 Kotlin 安全调用，相当于 Java 里先判断 arguments 是否为 null 再取值。
+                // [设计] 为什么这样写：路由参数只用于定位阅读目标；如果极端情况下缺失，页面仍展示空骨架而不是崩溃。
+                val fileId = backStackEntry.arguments?.getString(Routes.TXT_READER_FILE_ID_ARG).orEmpty()
+                val fileName = backStackEntry.arguments?.getString(Routes.TXT_READER_FILE_NAME_ARG).orEmpty()
+                TxtReaderScreen(
+                    fileId = fileId,
+                    fileName = fileName,
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
             }
         }
     }
