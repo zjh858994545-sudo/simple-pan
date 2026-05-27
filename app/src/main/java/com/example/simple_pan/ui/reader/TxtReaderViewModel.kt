@@ -33,6 +33,12 @@ class TxtReaderViewModel @Inject constructor(
                     fallbackFileName = intent.fallbackFileName
                 )
             }
+            TxtReaderIntent.PreviousPage -> {
+                goToPreviousPage()
+            }
+            TxtReaderIntent.NextPage -> {
+                goToNextPage()
+            }
         }
     }
 
@@ -63,11 +69,14 @@ class TxtReaderViewModel @Inject constructor(
             try {
                 when (val result = readTxtFileUseCase(fileId)) {
                     is ReadTxtFileResult.Loaded -> {
+                        val pages = result.content.toFixedLengthPages()
                         _state.update { currentState ->
                             currentState.copy(
                                 fileId = result.fileId,
                                 fileName = result.fileName,
                                 content = result.content,
+                                pages = pages,
+                                currentPageIndex = 0,
                                 isLoading = false,
                                 errorMessage = null
                             )
@@ -103,10 +112,51 @@ class TxtReaderViewModel @Inject constructor(
         _state.update { currentState ->
             currentState.copy(
                 content = "",
+                pages = emptyList(),
+                currentPageIndex = 0,
                 isLoading = false,
                 errorMessage = message
             )
         }
+    }
+
+    // [设计] 为什么这样写：上一页只移动页码，不重新读取文件；边界判断集中在 ViewModel，按钮、滑动等入口都能复用。
+    private fun goToPreviousPage() {
+        _state.update { currentState ->
+            if (currentState.canGoPrevious) {
+                currentState.copy(currentPageIndex = currentState.currentPageIndex - 1)
+            } else {
+                currentState
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：下一页只依赖当前 State 的页数和页码，避免 UI 根据列表长度自行计算导致边界不一致。
+    private fun goToNextPage() {
+        _state.update { currentState ->
+            if (currentState.canGoNext) {
+                currentState.copy(currentPageIndex = currentState.currentPageIndex + 1)
+            } else {
+                currentState
+            }
+        }
+    }
+
+    // [语法] 这是 String 的扩展函数，相当于 Java 静态工具方法 ReaderPaginator.toFixedLengthPages(content)。
+    // [设计] 为什么这样写：阶段 5 明确要求 v1 固定字数分页，先用确定的字符数建立可演示版本；后续 v2 再把这里替换成基于文本测量的分页算法。
+    private fun String.toFixedLengthPages(): List<String> {
+        if (isEmpty()) {
+            return emptyList()
+        }
+
+        val pages = mutableListOf<String>()
+        var startIndex = 0
+        while (startIndex < length) {
+            val endIndex = minOf(startIndex + FIXED_PAGE_CHAR_COUNT, length)
+            pages += substring(startIndex, endIndex)
+            startIndex = endIndex
+        }
+        return pages
     }
 
     // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 ReaderErrors.failedMessage(message)。
@@ -130,5 +180,11 @@ class TxtReaderViewModel @Inject constructor(
             FileType.Audio -> "音频"
             FileType.Other -> "其他文件"
         }
+    }
+
+    // [语法] companion object 相当于 Java 的 static 常量区域。
+    // [设计] 为什么这样写：固定字数是 v1 分页策略参数，集中命名方便后续和 v2 测量分页做对比。
+    companion object {
+        private const val FIXED_PAGE_CHAR_COUNT = 500
     }
 }

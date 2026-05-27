@@ -76,7 +76,15 @@ fun TxtReaderScreen(
                 }
             )
             HorizontalDivider()
-            TxtReaderPagerBar()
+            TxtReaderPagerBar(
+                state = state,
+                onPreviousPage = {
+                    viewModel.onIntent(TxtReaderIntent.PreviousPage)
+                },
+                onNextPage = {
+                    viewModel.onIntent(TxtReaderIntent.NextPage)
+                }
+            )
         }
     }
 }
@@ -125,8 +133,8 @@ private fun TxtReaderBody(
                 message = state.errorMessage,
                 onRetry = onRetry
             )
-            state.content.isEmpty() -> TxtReaderEmpty()
-            else -> TxtReaderContent(content = state.content)
+            state.pages.isEmpty() -> TxtReaderEmpty()
+            else -> TxtReaderContent(content = state.currentPageText)
         }
     }
 }
@@ -179,7 +187,7 @@ private fun TxtReaderEmpty() {
     )
 }
 
-// [设计] 为什么这样写：第 6 步先直接展示完整文本并允许滚动，下一步 v1 固定字数分页会基于同一个 content 字段切成页。
+// [设计] 为什么这样写：正文只展示当前页文本；v1 固定字数分页可能在不同屏幕上仍有滚动，正好保留为后续 v2 测量分页的对比点。
 @Composable
 private fun TxtReaderContent(content: String) {
     Text(
@@ -191,9 +199,13 @@ private fun TxtReaderContent(content: String) {
     )
 }
 
-// [设计] 为什么这样写：分页控制先固定在底部，后续 v1 固定字数分页接入后只需要把页码和按钮可用状态改成真实 State。
+// [设计] 为什么这样写：分页控制固定在底部并完全由 State 驱动，用户点击按钮只发 Intent，不直接修改页码。
 @Composable
-private fun TxtReaderPagerBar() {
+private fun TxtReaderPagerBar(
+    state: TxtReaderState,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -202,21 +214,31 @@ private fun TxtReaderPagerBar() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Button(
-            enabled = false,
-            onClick = {}
+            enabled = state.canGoPrevious,
+            onClick = onPreviousPage
         ) {
             Text(text = "上一页")
         }
         Text(
-            text = "1 / 1",
+            text = state.toPageIndicatorText(),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold
         )
         Button(
-            enabled = false,
-            onClick = {}
+            enabled = state.canGoNext,
+            onClick = onNextPage
         ) {
             Text(text = "下一页")
         }
+    }
+}
+
+// [语法] 这是 TxtReaderState 的扩展函数，相当于 Java 静态工具方法 ReaderPageIndicator.toText(state)。
+// [设计] 为什么这样写：页码文案集中处理，加载、错误、空文件时不会显示误导性的 1 / 1。
+private fun TxtReaderState.toPageIndicatorText(): String {
+    return if (pageCount == 0) {
+        "- / -"
+    } else {
+        "$currentPageNumber / $pageCount"
     }
 }
