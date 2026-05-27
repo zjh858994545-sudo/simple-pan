@@ -34,6 +34,17 @@ class PrivateUploadStorage @Inject constructor(
         }
     }
 
+    // [语法] suspend fun 表示挂起函数，调用方可以在协程中等待删除完成，类似 Java Future。
+    // [设计] 为什么这样写：复制成功但数据库写入失败时，需要清理刚复制的私有文件，避免出现 Room 没记录但磁盘残留的半成功状态。
+    suspend fun delete(localPath: String): Boolean = withContext(ioDispatcher) {
+        val file = File(localPath)
+        if (file.exists()) {
+            file.delete()
+        } else {
+            true
+        }
+    }
+
     // [设计] 为什么这样写：只有通过大小策略的文件才会进入真正复制流程，把校验分支和 IO 分支拆开后，后续排查失败原因更直观。
     private fun copyAllowedFile(metadata: LocalFileMetadata): UploadFileCopyResult {
         val uploadRoot = resolveUploadRoot()
