@@ -45,15 +45,9 @@ class RecentRepositoryImpl @Inject constructor(
     }
 
     override fun observeRecentTransfer(limit: Int): Flow<List<RecentRecord>> {
-        return transferHistoryDao.observeRecentTransferHistory(limit).map { histories ->
-            val records = mutableListOf<RecentRecord>()
-            for (history in histories) {
-                val fileEntity = fileDao.findActiveFile(history.fileId)
-                if (fileEntity != null) {
-                    records += history.toRecentRecord(fileEntity.toDomain())
-                }
-            }
-            records
+        // [设计] 为什么这样写：最近转存直接走历史表和文件表的 join Flow；上传成功写入两张表后，Room 会触发首页自动收到最新记录。
+        return transferHistoryDao.observeRecentTransferWithFiles(limit).map { histories ->
+            histories.map { history -> history.toRecentRecord() }
         }
     }
 

@@ -2,7 +2,9 @@ package com.example.simple_pan.data.local.mapper
 
 import com.example.simple_pan.data.local.entity.OpenHistoryEntity
 import com.example.simple_pan.data.local.entity.TransferHistoryEntity
+import com.example.simple_pan.data.local.dao.TransferHistoryWithFile
 import com.example.simple_pan.domain.model.CloudFile
+import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.RecentRecord
 
 // [语法] 这是扩展函数，相当于 Java 静态方法 RecentMappers.toRecentRecord(history, file)。
@@ -26,6 +28,20 @@ fun TransferHistoryEntity.toRecentRecord(file: CloudFile): RecentRecord {
         fileId = file.fileId,
         fileName = file.name,
         fileType = file.type,
+        timestamp = transferredAt,
+        recordType = RecentRecord.RecordType.Transfer,
+        progress = null,
+        transferType = transferType
+    )
+}
+
+// [语法] 这是扩展函数，相当于 Java 静态方法 RecentMappers.toRecentRecord(projection)。
+// [设计] 为什么这样写：join 查询已经拿到首页展示所需字段，直接映射成 RecentRecord，可以减少 Repository 的 N+1 次文件查询。
+fun TransferHistoryWithFile.toRecentRecord(): RecentRecord {
+    return RecentRecord(
+        fileId = fileId,
+        fileName = fileName,
+        fileType = FileType.fromStorageValue(fileType),
         timestamp = transferredAt,
         recordType = RecentRecord.RecordType.Transfer,
         progress = null,

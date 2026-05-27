@@ -238,9 +238,19 @@ private fun RecentRow(record: RecentRecord) {
             Text(text = record.fileName, maxLines = 1)
         },
         supportingContent = {
-            Text(text = "${record.fileType.toDisplayName()} | ${record.timestamp.toTimeLabel()}")
+            Text(text = record.toSupportingText())
         }
     )
+}
+
+// [语法] 这是 RecentRecord 的扩展函数，相当于 Java 静态工具方法 RecentRecordDisplay.toSupportingText(record)。
+// [设计] 为什么这样写：最近浏览和最近转存共用同一行 UI，但转存需要额外展示来源，集中生成文案可以避免 RecentRow 里堆分支。
+private fun RecentRecord.toSupportingText(): String {
+    val actionText = when (recordType) {
+        RecentRecord.RecordType.Open -> fileType.toDisplayName()
+        RecentRecord.RecordType.Transfer -> transferType.toTransferSourceText()
+    }
+    return "$actionText | ${timestamp.toTimeLabel()}"
 }
 
 // [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toDisplayName(fileType)。
@@ -266,6 +276,16 @@ private fun FileType.toShortLabel(): String {
         FileType.Image -> "图"
         FileType.Audio -> "音"
         FileType.Other -> "其"
+    }
+}
+
+// [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 TransferSourceText.from(type)。
+// [设计] 为什么这样写：转存来源来自历史表，首页只需要把已知来源翻译成用户能看懂的“上传/分享保存”，未知值保守显示为“转存”。
+private fun String?.toTransferSourceText(): String {
+    return when (this) {
+        "upload" -> "上传"
+        "share_save" -> "分享保存"
+        else -> "转存"
     }
 }
 
