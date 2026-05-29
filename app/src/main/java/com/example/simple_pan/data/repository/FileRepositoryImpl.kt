@@ -117,6 +117,11 @@ class FileRepositoryImpl @Inject constructor(
         fileDao.findActiveChildFolders(parentId).map { entity -> entity.toDomain() }
     }
 
+    // [设计] 为什么这样写：分享快照需要读取任意文件夹的一层直接子节点，递归规则留给 UseCase，Repository 只暴露领域模型。
+    override suspend fun findActiveChildren(parentId: String): List<CloudFile> = withContext(ioDispatcher) {
+        fileDao.findActiveChildren(parentId).map { entity -> entity.toDomain() }
+    }
+
     // [设计] 为什么这样写：把“找出某文件夹所有后代目录”集中在 Repository，后续移动校验只需要判断目标 id 是否在这个集合里。
     override suspend fun findActiveDescendantFolderIds(folderId: String): Set<String> = withContext(ioDispatcher) {
         // [语法] mutableSetOf 创建可变 Set，相当于 Java 的 new LinkedHashSet<String>()。

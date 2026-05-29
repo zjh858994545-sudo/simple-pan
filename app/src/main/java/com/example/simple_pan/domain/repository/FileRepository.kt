@@ -31,6 +31,9 @@ interface FileRepository {
     // [设计] 为什么这样写：移动弹窗需要展示目标文件夹；Repository 返回领域模型，UI 不需要知道数据库里的 type 字符串。
     suspend fun findActiveChildFolders(parentId: String?): List<CloudFile>
 
+    // [设计] 为什么这样写：文件夹分享需要递归生成快照，UseCase 只需要按 parentId 读取直接子节点，不应该直接访问 DAO。
+    suspend fun findActiveChildren(parentId: String): List<CloudFile>
+
     // [设计] 为什么这样写：移动校验要禁止移动到自身子目录，提前提供后代文件夹 id 查询，后续校验逻辑可以保持清晰。
     suspend fun findActiveDescendantFolderIds(folderId: String): Set<String>
 
