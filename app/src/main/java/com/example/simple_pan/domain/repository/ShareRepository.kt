@@ -1,10 +1,15 @@
 package com.example.simple_pan.domain.repository
 
+import com.example.simple_pan.domain.model.CreateShareRequest
 import com.example.simple_pan.domain.model.ShareBundle
 import kotlinx.coroutines.flow.Flow
 
 // [设计] 为什么这样写：分享链路通过 token 找本地快照，Repository 把 share_entity 和 snapshot 表聚合成领域对象，UI 不需要知道拆表细节。
 interface ShareRepository {
+    // [语法] suspend fun 是协程函数，类似 Java Future/回调，但调用方可以用顺序代码写异步流程。
+    // [设计] 为什么这样写：创建分享需要生成 token、写分享表、写快照表，这些必须由 Repository 在事务里完成，避免 UI 拼接数据库细节。
+    suspend fun createShare(request: CreateShareRequest): ShareBundle
+
     // [语法] Flow<ShareBundle?> 表示分享可能不存在，类似 Java Observable<Optional<ShareBundle>>。
     // [设计] 为什么这样写：分享页观察 token 对应内容，后续分享过期或删除时 UI 可以自然进入错误/空状态。
     fun observeShareBundle(token: String): Flow<ShareBundle?>

@@ -6,8 +6,8 @@ data class ShareBundle(
     val shareId: String,
     val token: String,
     val title: String,
-    val shareType: String,
-    val snapshotFiles: List<CloudFile>,
+    val shareType: ShareType,
+    val snapshotFiles: List<ShareSnapshotFile>,
     val createdAt: Long,
     val expiredAt: Long?,
     val ownerMask: String?
