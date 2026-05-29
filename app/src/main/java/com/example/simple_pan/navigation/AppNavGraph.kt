@@ -1,21 +1,34 @@
 package com.example.simple_pan.navigation
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.simple_pan.deeplink.DeepLinkParseResult
+import com.example.simple_pan.deeplink.DeepLinkParser
 import com.example.simple_pan.ui.file.FileListScreen
 import com.example.simple_pan.ui.home.PanHomeScreen
 import com.example.simple_pan.ui.reader.TxtReaderScreen
@@ -28,6 +41,7 @@ fun AppNavGraph() {
     // [设计] 为什么这样写：NavController 必须在顶层稳定持有，否则重组时导航栈可能被重建，Tab 返回状态也会丢失。
     val navController = rememberNavController()
     val currentTopLevelRoute = navController.currentTopLevelRoute()
+    ClipboardShareLinkHandler(navController = navController)
 
     Scaffold(
         bottomBar = {
@@ -115,6 +129,70 @@ fun AppNavGraph() {
             }
         }
     }
+}
+
+// [设计] 为什么这样写：剪贴板检测属于 App 级入口能力，放在导航层可以复用现有分享预览路由，不让 Activity 或具体页面直接处理跳转。
+@Composable
+private fun ClipboardShareLinkHandler(navController: NavHostController) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var lastHandledShareToken by remember { mutableStateOf<String?>(null) }
+
+    // [语法] DisposableEffect 会在 Composable 进入组合时注册资源，并在离开组合时通过 onDispose 清理资源。
+    // [设计] 为什么这样写：监听生命周期只需要在导航图存在期间有效，页面销毁时移除 observer，避免泄漏 Activity。
+    DisposableEffect(context, lifecycleOwner, navController) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val token = context.findClipboardShareToken()
+                if (token != null && token != lastHandledShareToken) {
+                    lastHandledShareToken = token
+                    navController.navigate(Routes.sharePreview(token)) {
+                        // [设计] 为什么这样写：如果用户已经在同一个分享预览页，回到前台时不要再堆一层重复页面。
+                        launchSingleTop = true
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+}
+
+// [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 ClipboardShareDetector.findToken(context)。
+// [设计] 为什么这样写：读取剪贴板是 Android 平台能力，解析规则由 DeepLinkParser 负责；这里仅把两者衔接成“可导航 token”。
+private fun Context.findClipboardShareToken(): String? {
+    val clipboardText = readClipboardTextOrNull() ?: return null
+    return when (val result = DeepLinkParser.parse(clipboardText)) {
+        is DeepLinkParseResult.Share -> result.token
+        DeepLinkParseResult.InvalidToken,
+        DeepLinkParseResult.MissingToken,
+        DeepLinkParseResult.NotSimplePanLink,
+        DeepLinkParseResult.UnsupportedRoute -> null
+    }
+}
+
+// [语法] 这是 Context 的扩展函数；as? 是安全类型转换，失败时返回 null，类似 Java 的 instanceof 判断后再 cast。
+// [设计] 为什么这样写：剪贴板可能为空、不是文本或系统服务不可用，统一转成 null，避免前台检测打断正常启动。
+private fun Context.readClipboardTextOrNull(): String? {
+    val clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        ?: return null
+    val clipData = try {
+        clipboardManager.primaryClip
+    } catch (exception: SecurityException) {
+        null
+    } ?: return null
+
+    if (clipData.itemCount <= 0) {
+        return null
+    }
+
+    val firstItemText = clipData.getItemAt(0)
+        .coerceToText(this)
+        ?.toString()
+        ?.trim()
+    return firstItemText?.takeIf { text -> text.isNotBlank() }
 }
 
 // [设计] 为什么这样写：底部栏单独拆函数，后续如果要改样式或增加 badge，不会干扰 NavHost 的路由配置。
