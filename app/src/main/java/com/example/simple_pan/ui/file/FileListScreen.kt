@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.util.AndroidRuntimeException
@@ -75,8 +76,15 @@ fun FileListScreen(
             when (effect) {
                 is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
                 is FileListEffect.ShareCreated -> {
+                    val shareText = effect.toShareText()
+                    val copied = context.copyShareTextToClipboard(shareText)
+                    val message = if (copied) {
+                        "分享链接已复制：${effect.title}（${effect.fileCount} 项）"
+                    } else {
+                        "分享已生成，但复制失败"
+                    }
                     snackbarHostState.showSnackbar(
-                        "分享已生成：${effect.title}（${effect.fileCount} 项）"
+                        message
                     )
                 }
                 is FileListEffect.OpenTxtReader -> {
@@ -376,6 +384,33 @@ private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider"
 
 // [设计] 为什么这样写：部分上传来源可能没有准确 MIME，系统播放器用 video/* 兜底比空字符串更容易匹配到可用 App。
 private const val DEFAULT_VIDEO_MIME_TYPE = "video/*"
+
+// [设计] 为什么这样写：阶段 6 第 4 步先用 token 生成可复制的分享链接，不包含 file_id 或 path；正式解析和测试会在下一步抽到 ShareLinkBuilder/DeepLinkParser。
+private const val SHARE_LINK_PREFIX = "simplepan://share?token="
+
+// [设计] 为什么这样写：剪贴板标签只给系统剪贴板内部识别使用，不展示给用户；集中成常量方便后续分享文案统一调整。
+private const val SHARE_CLIP_LABEL = "SimplePan Share"
+
+// [语法] 这是 FileListEffect.ShareCreated 的扩展函数，相当于 Java 静态工具方法 ShareTextFormatter.toShareText(effect)。
+// [设计] 为什么这样写：分享文案属于 UI 平台动作前的展示格式，先放在 Screen 层消费 Effect；后续抽 ShareLinkBuilder 时只替换这里的链接生成部分。
+private fun FileListEffect.ShareCreated.toShareText(): String {
+    return buildString {
+        appendLine("SimplePan 分享")
+        appendLine("标题：$title")
+        appendLine("数量：$fileCount 项")
+        append("链接：$SHARE_LINK_PREFIX$token")
+    }
+}
+
+// [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 ClipboardWriters.copyShareText(context, text)。
+// [设计] 为什么这样写：复制剪贴板是 Android 平台能力，放在 Screen 文件内处理，避免 ViewModel 依赖 Context 或系统服务。
+private fun Context.copyShareTextToClipboard(shareText: String): Boolean {
+    val clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        ?: return false
+    val clipData = ClipData.newPlainText(SHARE_CLIP_LABEL, shareText)
+    clipboardManager.setPrimaryClip(clipData)
+    return true
+}
 
 // [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 VideoOpeners.openVideoFile(context, path, mimeType)。
 // [设计] 为什么这样写：打开系统播放器是 UI 平台动作，放在 Screen 文件的局部 helper 中，既能复用 FileProvider 规则，也不把 Android Intent 泄漏进 ViewModel。
