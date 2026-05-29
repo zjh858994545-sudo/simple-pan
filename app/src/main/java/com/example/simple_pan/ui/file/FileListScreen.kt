@@ -74,6 +74,11 @@ fun FileListScreen(
             // [设计] 为什么这样写：Effect 在 Screen 层集中消费；TXT 暂时保留占位提示，视频则在这里转换成 Android 系统 Intent。
             when (effect) {
                 is FileListEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is FileListEffect.ShareCreated -> {
+                    snackbarHostState.showSnackbar(
+                        "分享已生成：${effect.title}（${effect.fileCount} 项）"
+                    )
+                }
                 is FileListEffect.OpenTxtReader -> {
                     onOpenTxtReader(effect.fileId, effect.fileName)
                 }
@@ -143,6 +148,9 @@ fun FileListScreen(
             onToggleSelectAllVisible = {
                 viewModel.onIntent(FileListIntent.ToggleSelectAllVisible)
             },
+            onShareClick = {
+                viewModel.onIntent(FileListIntent.CreateShareFromSelection)
+            },
             onOpenRenameDialog = {
                 viewModel.onIntent(FileListIntent.OpenRenameDialog)
             },
@@ -205,6 +213,7 @@ private fun FileListContent(
     onExitManageMode: () -> Unit,
     onToggleFileSelection: (CloudFile) -> Unit,
     onToggleSelectAllVisible: () -> Unit,
+    onShareClick: () -> Unit,
     onOpenRenameDialog: () -> Unit,
     onDismissRenameDialog: () -> Unit,
     onRenameInputChange: (String) -> Unit,
@@ -272,7 +281,8 @@ private fun FileListContent(
                 if (state.isManageMode) {
                     FileManageActionBar(
                         selectedCount = state.selectedFileIds.size,
-                        onShareClick = {},
+                        isCreatingShare = state.isCreatingShare,
+                        onShareClick = onShareClick,
                         onDeleteClick = onOpenDeleteDialog,
                         onMoveClick = onOpenMoveDialog,
                         onRenameClick = onOpenRenameDialog
@@ -408,10 +418,11 @@ private fun Context.openVideoFile(localPath: String, mimeType: String): String? 
     }
 }
 
-// [设计] 为什么这样写：底部操作栏只依赖 selectedCount，就能先完成管理态交互骨架；真正的分享/删除/移动/重命名逻辑留给后续步骤分别接入。
+// [设计] 为什么这样写：底部操作栏只接收当前选择数量和各操作回调，具体分享/删除/移动/重命名规则仍由 ViewModel 统一处理。
 @Composable
 private fun FileManageActionBar(
     selectedCount: Int,
+    isCreatingShare: Boolean,
     onShareClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onMoveClick: () -> Unit,
@@ -435,8 +446,8 @@ private fun FileManageActionBar(
             ) {
                 FileManageActionButton(
                     modifier = Modifier.weight(1f),
-                    text = "分享",
-                    enabled = hasSelection,
+                    text = if (isCreatingShare) "分享中" else "分享",
+                    enabled = hasSelection && !isCreatingShare,
                     onClick = onShareClick
                 )
                 FileManageActionButton(

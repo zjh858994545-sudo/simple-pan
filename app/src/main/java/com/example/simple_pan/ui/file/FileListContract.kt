@@ -83,6 +83,8 @@ data class FileListState(
     val isManageMode: Boolean = false,
     // [设计] 为什么这样写：上传是异步动作，先用布尔值防止重复点击；更细的进度和提示会在下一步单独完善。
     val isUploading: Boolean = false,
+    // [设计] 为什么这样写：创建分享是异步动作，单独状态能禁用底部分享按钮，避免用户连续点击生成多条重复分享记录。
+    val isCreatingShare: Boolean = false,
     val isLoading: Boolean = true,
     // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null 表示。
     val errorMessage: String? = null,
@@ -98,6 +100,14 @@ sealed interface FileListEffect {
     // [语法] data class 用来携带提示文案，相当于 Java 里一个只读事件对象。
     // [设计] 为什么这样写：上传成功、过大、读取失败都只需要一次性提示，统一成 ShowMessage 后 UI 只负责展示 Snackbar。
     data class ShowMessage(val message: String) : FileListEffect
+
+    // [语法] data class 用来携带分享创建结果，相当于 Java 里一个只读事件对象。
+    // [设计] 为什么这样写：创建分享成功后下一步要复制分享文案；先把 token、标题和快照数量作为 Effect 发给 Screen，避免把一次性动作塞进 State。
+    data class ShareCreated(
+        val token: String,
+        val title: String,
+        val fileCount: Int
+    ) : FileListEffect
 
     // [语法] data class 用来携带 TXT 阅读器跳转需要的参数，相当于 Java 里一个只读导航事件对象。
     // [设计] 为什么这样写：当前步骤先把“已通过打开校验”的结果从 ViewModel 发出来，后续接入阅读器页面时只替换 UI 层消费方式，不需要改打开校验链路。
@@ -161,6 +171,10 @@ sealed interface FileListIntent {
     // [语法] data object 是无参数单例事件，类似 Java enum 里的 TOGGLE_SELECT_ALL_VISIBLE。
     // [设计] 为什么这样写：全选必须由 ViewModel 基于当前可见列表计算，避免 UI 把筛选/排序后的列表规则复制一份。
     data object ToggleSelectAllVisible : FileListIntent
+
+    // [语法] data object 是 Kotlin 单例对象，适合表达没有额外参数的点击动作。
+    // [设计] 为什么这样写：分享入口只需要当前选中集合，UI 不应该把文件 id 列表拼给 UseCase，避免管理态选择规则泄漏到 Composable。
+    data object CreateShareFromSelection : FileListIntent
 
     // [设计] 为什么这样写：打开重命名弹窗要由 ViewModel 根据选中集合决定目标文件，UI 不自己挑文件。
     data object OpenRenameDialog : FileListIntent

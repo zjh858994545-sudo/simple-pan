@@ -3,11 +3,13 @@ package com.example.simple_pan.ui.file
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.simple_pan.domain.model.CloudFile
+import com.example.simple_pan.domain.model.CreateShareResult
 import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.OpenFileResult
 import com.example.simple_pan.domain.model.UploadFileResult
 import com.example.simple_pan.domain.model.UploadSizeCheckResult
 import com.example.simple_pan.domain.repository.FileRepository
+import com.example.simple_pan.domain.usecase.CreateShareUseCase
 import com.example.simple_pan.domain.usecase.OpenFileUseCase
 import com.example.simple_pan.domain.usecase.RecordOpenUseCase
 import com.example.simple_pan.domain.usecase.UploadFileUseCase
@@ -29,6 +31,7 @@ import java.util.Locale
 @HiltViewModel
 class FileListViewModel @Inject constructor(
     private val fileRepository: FileRepository,
+    private val createShareUseCase: CreateShareUseCase,
     private val openFileUseCase: OpenFileUseCase,
     private val recordOpenUseCase: RecordOpenUseCase,
     private val uploadFileUseCase: UploadFileUseCase
@@ -187,6 +190,9 @@ class FileListViewModel @Inject constructor(
                         selectedFileIds = nextSelectedFileIds
                     )
                 }
+            }
+            FileListIntent.CreateShareFromSelection -> {
+                createShareFromSelection()
             }
             FileListIntent.OpenRenameDialog -> {
                 val currentState = _state.value
@@ -387,6 +393,72 @@ class FileListViewModel @Inject constructor(
                 isUploading = false,
                 errorMessage = null
             )
+        }
+        _effect.emit(FileListEffect.ShowMessage(message))
+    }
+
+    // [设计] 为什么这样写：分享按钮只发起“对当前选中集合创建分享”的业务动作，具体单文件/文件夹/多文件快照规则交给 CreateShareUseCase。
+    private fun createShareFromSelection() {
+        val currentState = _state.value
+        val selectedFileIds = currentState.selectedFileIds.toList()
+        if (selectedFileIds.isEmpty()) {
+            viewModelScope.launch {
+                _effect.emit(FileListEffect.ShowMessage("请先选择要分享的文件"))
+            }
+            return
+        }
+        if (currentState.isCreatingShare) {
+            return
+        }
+
+        _state.update { state ->
+            state.copy(
+                isCreatingShare = true,
+                errorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                when (val result = createShareUseCase(selectedFileIds)) {
+                    is CreateShareResult.Created -> {
+                        val shareBundle = result.shareBundle
+                        _state.update { state ->
+                            state.copy(
+                                isCreatingShare = false,
+                                isManageMode = false,
+                                selectedFileIds = emptySet()
+                            )
+                        }
+                        _effect.emit(
+                            FileListEffect.ShareCreated(
+                                token = shareBundle.token,
+                                title = shareBundle.title,
+                                fileCount = shareBundle.snapshotFiles.size
+                            )
+                        )
+                    }
+                    CreateShareResult.EmptySelection -> {
+                        showCreateShareMessage("请先选择要分享的文件")
+                    }
+                    CreateShareResult.NoActiveFiles -> {
+                        showCreateShareMessage("选中的文件不存在或已被删除")
+                    }
+                    is CreateShareResult.Failed -> {
+                        showCreateShareMessage(result.message.toCreateShareFailedMessage())
+                    }
+                }
+            } catch (throwable: Throwable) {
+                showCreateShareMessage(throwable.toCreateShareMessage())
+            }
+        }
+    }
+
+    // [语法] suspend fun 表示挂起函数，类似 Java Future/回调；这里需要在协程里发送一次性 Effect。
+    // [设计] 为什么这样写：分享失败只需要提示并恢复按钮状态，不应该切换整个文件列表的 errorMessage。
+    private suspend fun showCreateShareMessage(message: String) {
+        _state.update { currentState ->
+            currentState.copy(isCreatingShare = false)
         }
         _effect.emit(FileListEffect.ShowMessage(message))
     }
@@ -794,6 +866,22 @@ class FileListViewModel @Inject constructor(
     // [设计] 为什么这样写：异常转上传文案和列表加载文案分开，避免把“文件列表加载失败”误显示在上传场景。
     private fun Throwable.toUploadMessage(): String {
         return message.toUploadFailedMessage()
+    }
+
+    // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 ShareErrors.failedMessage(message)。
+    // [设计] 为什么这样写：创建分享失败可能来自数据库或 token 写入，统一兜底能避免 Snackbar 显示空白错误。
+    private fun String?.toCreateShareFailedMessage(): String {
+        return if (isNullOrBlank()) {
+            "创建分享失败，请重试"
+        } else {
+            "创建分享失败：$this"
+        }
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 ShareErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：异常转分享文案独立于上传/打开/列表加载，用户能从提示判断失败发生在“分享”链路。
+    private fun Throwable.toCreateShareMessage(): String {
+        return message.toCreateShareFailedMessage()
     }
 
     // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 OpenFileErrors.toMessage(throwable)。
