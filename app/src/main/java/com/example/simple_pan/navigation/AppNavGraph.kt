@@ -19,6 +19,7 @@ import androidx.navigation.navArgument
 import com.example.simple_pan.ui.file.FileListScreen
 import com.example.simple_pan.ui.home.PanHomeScreen
 import com.example.simple_pan.ui.reader.TxtReaderScreen
+import com.example.simple_pan.ui.share.SharePreviewScreen
 
 // [设计] 为什么这样写：AppNavGraph 是全局导航入口，Activity 不关心具体页面，后续 Reader/Share 页面也能统一接进这里。
 @Composable
@@ -63,6 +64,9 @@ fun AppNavGraph() {
                 FileListScreen(
                     onOpenTxtReader = { fileId, fileName ->
                         navController.navigate(Routes.txtReader(fileId, fileName))
+                    },
+                    onOpenSharePreview = { token ->
+                        navController.navigate(Routes.sharePreview(token))
                     }
                 )
             }
@@ -85,6 +89,25 @@ fun AppNavGraph() {
                 TxtReaderScreen(
                     fileId = fileId,
                     fileName = fileName,
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+            // [设计] 为什么这样写：分享预览页是二级页面，只通过 token 进入，不加入底部 Tab；后续剪贴板识别和系统 DeepLink 都复用这条路由。
+            composable(
+                route = Routes.SHARE_PREVIEW_ROUTE,
+                arguments = listOf(
+                    navArgument(Routes.SHARE_PREVIEW_TOKEN_ARG) {
+                        type = NavType.StringType
+                    }
+                )
+            ) { backStackEntry ->
+                // [语法] ?. 是 Kotlin 安全调用，相当于 Java 里先判断 arguments 是否为 null 再取值。
+                // [设计] 为什么这样写：极端情况下 token 缺失时先进入骨架页，下一步加载真实快照时再统一显示错误状态。
+                val token = backStackEntry.arguments?.getString(Routes.SHARE_PREVIEW_TOKEN_ARG).orEmpty()
+                SharePreviewScreen(
+                    token = token,
                     onBackClick = {
                         navController.popBackStack()
                     }

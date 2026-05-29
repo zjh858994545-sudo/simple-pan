@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,6 +62,7 @@ import java.io.File
 @Composable
 fun FileListScreen(
     onOpenTxtReader: (fileId: String, fileName: String) -> Unit,
+    onOpenSharePreview: (token: String) -> Unit,
     viewModel: FileListViewModel = hiltViewModel()
 ) {
     // [语法] by 是 Kotlin 委托语法，这里把 State<FileListState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
@@ -88,9 +90,14 @@ fun FileListScreen(
                     } else {
                         "分享已生成，但复制失败"
                     }
-                    snackbarHostState.showSnackbar(
-                        message
+                    // [设计] 为什么这样写：创建分享后先给用户复制结果提示，用户点击“查看”时再进入预览页，避免成功复制后页面突然跳转。
+                    val result = snackbarHostState.showSnackbar(
+                        message = message,
+                        actionLabel = "查看"
                     )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        onOpenSharePreview(effect.token)
+                    }
                 }
                 is FileListEffect.OpenTxtReader -> {
                     onOpenTxtReader(effect.fileId, effect.fileName)
