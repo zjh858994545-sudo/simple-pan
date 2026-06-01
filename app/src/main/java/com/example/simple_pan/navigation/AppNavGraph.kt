@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,8 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -33,6 +35,7 @@ import com.example.simple_pan.ui.file.FileListScreen
 import com.example.simple_pan.ui.home.PanHomeScreen
 import com.example.simple_pan.ui.reader.TxtReaderScreen
 import com.example.simple_pan.ui.share.SharePreviewScreen
+import kotlinx.coroutines.delay
 
 // [设计] 为什么这样写：AppNavGraph 是全局导航入口，Activity 不关心具体页面，后续 Reader/Share 页面也能统一接进这里。
 @Composable
@@ -41,9 +44,16 @@ fun AppNavGraph() {
     // [设计] 为什么这样写：NavController 必须在顶层稳定持有，否则重组时导航栈可能被重建，Tab 返回状态也会丢失。
     val navController = rememberNavController()
     val currentTopLevelRoute = navController.currentTopLevelRoute()
-    ClipboardShareLinkHandler(navController = navController)
+    val snackbarHostState = remember { SnackbarHostState() }
+    ClipboardShareLinkHandler(
+        navController = navController,
+        snackbarHostState = snackbarHostState
+    )
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
         bottomBar = {
             // [设计] 为什么这样写：阅读器是沉浸式二级页面，不属于底部 Tab；只在顶层页面显示底部导航，避免阅读时误触切换页面。
             if (currentTopLevelRoute != null) {
@@ -133,43 +143,65 @@ fun AppNavGraph() {
 
 // [设计] 为什么这样写：剪贴板检测属于 App 级入口能力，放在导航层可以复用现有分享预览路由，不让 Activity 或具体页面直接处理跳转。
 @Composable
-private fun ClipboardShareLinkHandler(navController: NavHostController) {
+private fun ClipboardShareLinkHandler(
+    navController: NavHostController,
+    snackbarHostState: SnackbarHostState
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var lastHandledShareToken by remember { mutableStateOf<String?>(null) }
 
-    // [语法] DisposableEffect 会在 Composable 进入组合时注册资源，并在离开组合时通过 onDispose 清理资源。
-    // [设计] 为什么这样写：监听生命周期只需要在导航图存在期间有效，页面销毁时移除 observer，避免泄漏 Activity。
-    DisposableEffect(context, lifecycleOwner, navController) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                val token = context.findClipboardShareToken()
-                if (token != null && token != lastHandledShareToken) {
-                    lastHandledShareToken = token
-                    navController.navigate(Routes.sharePreview(token)) {
-                        // [设计] 为什么这样写：如果用户已经在同一个分享预览页，回到前台时不要再堆一层重复页面。
-                        launchSingleTop = true
+    // [语法] LaunchedEffect 会在组合中启动协程，并随 key 变化自动重启；repeatOnLifecycle 会在 RESUMED 状态运行内部代码。
+    // [设计] 为什么这样写：剪贴板读取要等 App 真正回到前台后再做，延迟一小段时间能避开冷启动时窗口尚未获得前台权限的时机问题。
+    LaunchedEffect(context, lifecycleOwner, navController, snackbarHostState) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            delay(CLIPBOARD_SHARE_DETECTION_DELAY_MS)
+            when (val result = context.detectClipboardShareLink()) {
+                is ClipboardShareDetectionResult.Share -> {
+                    if (result.token != lastHandledShareToken) {
+                        lastHandledShareToken = result.token
+                        navController.navigate(Routes.sharePreview(result.token)) {
+                            // [设计] 为什么这样写：如果用户已经在同一个分享预览页，回到前台时不要再堆一层重复页面。
+                            launchSingleTop = true
+                        }
+                        snackbarHostState.showSnackbar("已识别剪贴板分享链接")
                     }
                 }
+                ClipboardShareDetectionResult.InvalidShareLink -> {
+                    snackbarHostState.showSnackbar("剪贴板中的分享链接无效")
+                }
+                ClipboardShareDetectionResult.NoShareLink -> Unit
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 }
 
-// [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 ClipboardShareDetector.findToken(context)。
-// [设计] 为什么这样写：读取剪贴板是 Android 平台能力，解析规则由 DeepLinkParser 负责；这里仅把两者衔接成“可导航 token”。
-private fun Context.findClipboardShareToken(): String? {
-    val clipboardText = readClipboardTextOrNull() ?: return null
+// [语法] sealed interface 表示受限结果类型，类似 Java 里固定子类集合的抽象父类型。
+// [设计] 为什么这样写：剪贴板检测要区分“没分享链接”和“有 SimplePan 链接但格式不对”，这样验证时能看到到底卡在哪一步。
+private sealed interface ClipboardShareDetectionResult {
+    // [语法] data class 相当于 Java 的只读结果对象，用来携带解析成功后的 token。
+    // [设计] 为什么这样写：导航只需要 token，不把原始剪贴板文本继续往下传，避免 UI 层误用 file_id/path 明文。
+    data class Share(val token: String) : ClipboardShareDetectionResult
+
+    // [语法] data object 是 Kotlin 单例对象，适合表达没有额外字段的固定结果。
+    // [设计] 为什么这样写：普通剪贴板文本不应该打扰用户，所以 NoShareLink 会被静默忽略。
+    data object NoShareLink : ClipboardShareDetectionResult
+
+    // [设计] 为什么这样写：如果剪贴板里有 SimplePan 链接但缺 token 或 token 非法，就给用户可见提示，方便定位复制内容问题。
+    data object InvalidShareLink : ClipboardShareDetectionResult
+}
+
+// [语法] 这是 Context 的扩展函数，相当于 Java 静态工具方法 ClipboardShareDetector.detect(context)。
+// [设计] 为什么这样写：读取剪贴板是 Android 平台能力，解析规则由 DeepLinkParser 负责；这里把两者衔接成可供导航层判断的结果。
+private fun Context.detectClipboardShareLink(): ClipboardShareDetectionResult {
+    val clipboardText = readClipboardTextOrNull()
+        ?: return ClipboardShareDetectionResult.NoShareLink
     return when (val result = DeepLinkParser.parse(clipboardText)) {
-        is DeepLinkParseResult.Share -> result.token
+        is DeepLinkParseResult.Share -> ClipboardShareDetectionResult.Share(result.token)
         DeepLinkParseResult.InvalidToken,
         DeepLinkParseResult.MissingToken,
-        DeepLinkParseResult.NotSimplePanLink,
-        DeepLinkParseResult.UnsupportedRoute -> null
+        DeepLinkParseResult.UnsupportedRoute -> ClipboardShareDetectionResult.InvalidShareLink
+        DeepLinkParseResult.NotSimplePanLink -> ClipboardShareDetectionResult.NoShareLink
     }
 }
 
@@ -194,6 +226,9 @@ private fun Context.readClipboardTextOrNull(): String? {
         ?.trim()
     return firstItemText?.takeIf { text -> text.isNotBlank() }
 }
+
+// [设计] 为什么这样写：Android 回前台后剪贴板读取权限可能比生命周期事件稍晚稳定，给窗口获取焦点留一个很短缓冲。
+private const val CLIPBOARD_SHARE_DETECTION_DELAY_MS = 300L
 
 // [设计] 为什么这样写：底部栏单独拆函数，后续如果要改样式或增加 badge，不会干扰 NavHost 的路由配置。
 @Composable
