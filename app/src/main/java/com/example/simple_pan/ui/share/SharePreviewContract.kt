@@ -11,7 +11,10 @@ data class SharePreviewState(
     val shareType: ShareType = ShareType.MultiFile,
     val files: List<ShareSnapshotFile> = emptyList(),
     val isLoading: Boolean = true,
+    val isSaving: Boolean = false,
     val isNotFound: Boolean = false,
+    val saveMessage: String? = null,
+    val saveErrorMessage: String? = null,
     val errorMessage: String? = null
 )
 
@@ -25,4 +28,8 @@ sealed interface SharePreviewIntent {
     // [语法] data object 是 Kotlin 单例对象，类似 Java enum 里的一个固定值。
     // [设计] 为什么这样写：重试使用当前 State 里的 token，不需要 UI 再传一遍，避免按钮层重复保存参数。
     data object Retry : SharePreviewIntent
+
+    // [语法] data object 是无参数单例事件，适合表达“保存当前分享到网盘”这种按钮动作。
+    // [设计] 为什么这样写：保存目标先固定为网盘根目录，UI 不传文件列表，避免 Composable 认识快照写库细节。
+    data object SaveToPan : SharePreviewIntent
 }

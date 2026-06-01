@@ -54,6 +54,9 @@ fun SharePreviewScreen(
         onBackClick = onBackClick,
         onRetry = {
             viewModel.onIntent(SharePreviewIntent.Retry)
+        },
+        onSaveClick = {
+            viewModel.onIntent(SharePreviewIntent.SaveToPan)
         }
     )
 }
@@ -63,7 +66,8 @@ fun SharePreviewScreen(
 private fun SharePreviewContent(
     state: SharePreviewState,
     onBackClick: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onSaveClick: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -83,7 +87,10 @@ private fun SharePreviewContent(
                     onRetry = onRetry
                 )
                 state.isNotFound -> SharePreviewNotFound(onBackClick = onBackClick)
-                else -> SharePreviewLoaded(state = state)
+                else -> SharePreviewLoaded(
+                    state = state,
+                    onSaveClick = onSaveClick
+                )
             }
         }
     }
@@ -181,15 +188,57 @@ private fun SharePreviewCenteredMessage(
 
 // [设计] 为什么这样写：成功状态顶部展示分享元信息，下面展示固定快照列表，证明页面读的是分享快照而不是原文件表实时列表。
 @Composable
-private fun SharePreviewLoaded(state: SharePreviewState) {
+private fun SharePreviewLoaded(
+    state: SharePreviewState,
+    onSaveClick: () -> Unit
+) {
     Column(modifier = Modifier.fillMaxSize()) {
         SharePreviewSummary(state = state)
+        Spacer(modifier = Modifier.height(12.dp))
+        ShareSaveAction(
+            isSaving = state.isSaving,
+            canSave = state.files.isNotEmpty(),
+            saveMessage = state.saveMessage,
+            saveErrorMessage = state.saveErrorMessage,
+            onSaveClick = onSaveClick
+        )
         Spacer(modifier = Modifier.height(16.dp))
         if (state.files.isEmpty()) {
             SharePreviewEmpty()
         } else {
             ShareSnapshotList(files = state.files)
         }
+    }
+}
+
+// [设计] 为什么这样写：保存到网盘是分享页的主操作，按钮和结果提示放在列表上方，用户保存后不需要滚动才能看到反馈。
+@Composable
+private fun ShareSaveAction(
+    isSaving: Boolean,
+    canSave: Boolean,
+    saveMessage: String?,
+    saveErrorMessage: String?,
+    onSaveClick: () -> Unit
+) {
+    Button(
+        modifier = Modifier.fillMaxWidth(),
+        enabled = canSave && !isSaving,
+        onClick = onSaveClick
+    ) {
+        Text(text = if (isSaving) "保存中" else "保存到网盘")
+    }
+    val message = saveErrorMessage ?: saveMessage
+    if (message != null) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (saveErrorMessage != null) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            }
+        )
     }
 }
 

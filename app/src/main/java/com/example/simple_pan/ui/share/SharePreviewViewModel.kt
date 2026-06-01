@@ -2,7 +2,9 @@ package com.example.simple_pan.ui.share
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.simple_pan.domain.model.SaveShareResult
 import com.example.simple_pan.domain.repository.ShareRepository
+import com.example.simple_pan.domain.usecase.SaveShareToPanUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -16,7 +18,8 @@ import kotlinx.coroutines.launch
 // [设计] 为什么这样写：分享预览页只依赖 domain 层 ShareRepository，不直接认识 Room 的 share_entity 和 snapshot 表结构。
 @HiltViewModel
 class SharePreviewViewModel @Inject constructor(
-    private val shareRepository: ShareRepository
+    private val shareRepository: ShareRepository,
+    private val saveShareToPanUseCase: SaveShareToPanUseCase
 ) : ViewModel() {
     // [语法] MutableStateFlow 类似 Java Observable 加当前值缓存；asStateFlow 暴露只读版本，避免 UI 直接改状态。
     // [设计] 为什么这样写：分享内容可能随 Room 变化刷新，StateFlow 能让 Compose 自动重组并保持单向数据流。
@@ -30,6 +33,7 @@ class SharePreviewViewModel @Inject constructor(
         when (intent) {
             is SharePreviewIntent.Load -> loadShare(intent.token)
             SharePreviewIntent.Retry -> loadShare(_state.value.token)
+            SharePreviewIntent.SaveToPan -> saveCurrentShareToPan()
         }
     }
 
@@ -52,7 +56,10 @@ class SharePreviewViewModel @Inject constructor(
                 currentState.copy(
                     token = normalizedToken,
                     isLoading = true,
+                    isSaving = false,
                     isNotFound = false,
+                    saveMessage = null,
+                    saveErrorMessage = null,
                     errorMessage = null
                 )
             }
@@ -93,6 +100,82 @@ class SharePreviewViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    // [设计] 为什么这样写：保存分享从当前 token 重新读取快照并写入网盘，避免页面状态过期时保存到旧数据。
+    private fun saveCurrentShareToPan() {
+        val currentState = _state.value
+        if (currentState.isSaving) {
+            return
+        }
+        if (currentState.token.isBlank()) {
+            _state.update { state ->
+                state.copy(saveErrorMessage = "分享链接缺少 token")
+            }
+            return
+        }
+
+        _state.update { state ->
+            state.copy(
+                isSaving = true,
+                saveMessage = null,
+                saveErrorMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            when (val result = saveShareToPanUseCase(currentState.token)) {
+                is SaveShareResult.Saved -> {
+                    _state.update { state ->
+                        state.copy(
+                            isSaving = false,
+                            saveMessage = "已保存 ${result.files.size} 项到网盘",
+                            saveErrorMessage = null
+                        )
+                    }
+                }
+                SaveShareResult.MissingToken -> {
+                    showSaveError("分享链接缺少 token")
+                }
+                SaveShareResult.ShareNotFound -> {
+                    _state.update { state ->
+                        state.copy(
+                            isSaving = false,
+                            isNotFound = true,
+                            saveMessage = null,
+                            saveErrorMessage = null
+                        )
+                    }
+                }
+                SaveShareResult.EmptySnapshot -> {
+                    showSaveError("分享内容为空，无法保存")
+                }
+                is SaveShareResult.Failed -> {
+                    showSaveError(result.message.toSaveFailedMessage())
+                }
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：保存失败只影响按钮下方提示，不替换整个分享预览列表，用户可以检查内容后再次保存。
+    private fun showSaveError(message: String) {
+        _state.update { state ->
+            state.copy(
+                isSaving = false,
+                saveMessage = null,
+                saveErrorMessage = message
+            )
+        }
+    }
+
+    // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 ShareSaveErrors.failedMessage(message)。
+    // [设计] 为什么这样写：保存失败可能没有底层 message，统一兜底能避免页面显示空白错误。
+    private fun String?.toSaveFailedMessage(): String {
+        return if (isNullOrBlank()) {
+            "保存失败，请重试"
+        } else {
+            "保存失败：$this"
         }
     }
 

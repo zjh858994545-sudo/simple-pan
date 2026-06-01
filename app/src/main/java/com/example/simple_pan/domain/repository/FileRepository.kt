@@ -1,6 +1,7 @@
 package com.example.simple_pan.domain.repository
 
 import com.example.simple_pan.domain.model.CloudFile
+import com.example.simple_pan.domain.model.ShareSnapshotFile
 import com.example.simple_pan.domain.model.UploadFileResult
 import com.example.simple_pan.domain.model.UploadFileRecord
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +49,14 @@ interface FileRepository {
     // [语法] suspend fun 是协程函数，类似 Java Future/回调，但调用方可以用顺序代码写异步流程。
     // [设计] 为什么这样写：上传成功后必须同时写文件表和转存历史，Repository 用事务保证首页最近转存和文件列表不会出现半成功状态。
     suspend fun saveUploadedFile(record: UploadFileRecord, transferredAt: Long): CloudFile
+
+    // [设计] 为什么这样写：保存分享需要把快照重建成网盘文件，并写入转存历史；Repository 用事务保证文件列表和首页最近转存一致刷新。
+    suspend fun saveShareSnapshots(
+        snapshots: List<ShareSnapshotFile>,
+        shareToken: String,
+        targetParentId: String?,
+        transferredAt: Long
+    ): List<CloudFile>
 
     // [语法] suspend fun 是协程函数，适合包装 SAF 读取、文件复制和数据库写入这种耗时流程。
     // [设计] 为什么这样写：上传链路跨越本地文件和 Room 事务，统一放 Repository 能保证 UI 只发起业务动作，不直接拼接多个底层调用。

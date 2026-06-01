@@ -15,6 +15,7 @@ import com.example.simple_pan.data.storage.PrivateUploadStorage
 import com.example.simple_pan.di.IoDispatcher
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.LocalFileMetadata
+import com.example.simple_pan.domain.model.ShareSnapshotFile
 import com.example.simple_pan.domain.model.StoredUploadFile
 import com.example.simple_pan.domain.model.UploadFileCopyResult
 import com.example.simple_pan.domain.model.UploadFileResult
@@ -200,6 +201,67 @@ class FileRepositoryImpl @Inject constructor(
         }.toDomain()
     }
 
+    // [语法] suspend fun + withContext 表示协程函数切到指定线程执行，类似 Java 把保存任务提交到 IO Executor。
+    // [设计] 为什么这样写：保存分享需要重建文件夹层级、处理同名、写文件表和转存历史，事务包住后首页和文件列表不会出现半成功状态。
+    override suspend fun saveShareSnapshots(
+        snapshots: List<ShareSnapshotFile>,
+        shareToken: String,
+        targetParentId: String?,
+        transferredAt: Long
+    ): List<CloudFile> = withContext(ioDispatcher) {
+        require(snapshots.isNotEmpty()) {
+            "分享快照不能为空"
+        }
+        require(isValidUploadTarget(targetParentId)) {
+            "目标文件夹不存在或已被删除"
+        }
+
+        val savedFileIds = database.withTransaction {
+            val savedFolderIdsByOriginalPath = mutableMapOf<String, String>()
+            val reservedNamesByParent = mutableMapOf<String?, MutableSet<String>>()
+            val savedIds = mutableListOf<String>()
+
+            for (snapshot in snapshots.toShareSaveOrder()) {
+                val parentId = snapshot.resolveSavedParentId(
+                    targetParentId = targetParentId,
+                    savedFolderIdsByOriginalPath = savedFolderIdsByOriginalPath
+                )
+                val savedName = resolveUniqueShareSaveName(
+                    parentId = parentId,
+                    requestedName = snapshot.name,
+                    preserveExtension = snapshot.type.storageValue != FileEntity.TYPE_FOLDER,
+                    reservedNamesByParent = reservedNamesByParent
+                )
+                val fileId = UUID.randomUUID().toString()
+                val entity = snapshot.toShareSavedEntity(
+                    fileId = fileId,
+                    parentId = parentId,
+                    savedName = savedName,
+                    transferredAt = transferredAt
+                )
+
+                fileDao.insert(entity)
+                if (snapshot.isTopLevelShareSnapshot()) {
+                    transferHistoryDao.insert(
+                        TransferHistoryEntity(
+                            fileId = fileId,
+                            transferType = TransferHistoryEntity.TYPE_SHARE_SAVE,
+                            shareToken = shareToken,
+                            transferredAt = transferredAt
+                        )
+                    )
+                }
+                if (entity.type == FileEntity.TYPE_FOLDER) {
+                    savedFolderIdsByOriginalPath[snapshot.originalFullPath()] = fileId
+                }
+                savedIds += fileId
+            }
+            savedIds
+        }
+
+        fileDao.findActiveFiles(savedFileIds).map { entity -> entity.toDomain() }
+    }
+
     // [语法] suspend fun + withContext 表示协程函数切到指定线程执行，类似 Java 把上传任务提交到 IO Executor。
     // [设计] 为什么这样写：上传不是单个 DAO 操作，而是“校验目标目录 -> 读取元信息 -> 复制文件 -> 事务入库 -> 失败清理”的完整业务链路，集中在 Repository 能保证状态一致。
     override suspend fun uploadFromUri(
@@ -366,6 +428,164 @@ class FileRepositoryImpl @Inject constructor(
         )
     }
 
+    // [语法] 这是 List<ShareSnapshotFile> 的扩展函数，相当于 Java 静态工具方法 ShareSaveOrder.sort(snapshots)。
+    // [设计] 为什么这样写：保存分享时必须先插入父文件夹，再插入子文件；同层文件夹也要先于普通文件，才能恢复层级结构。
+    private fun List<ShareSnapshotFile>.toShareSaveOrder(): List<ShareSnapshotFile> {
+        return sortedWith(
+            compareBy<ShareSnapshotFile> { snapshot -> snapshot.relativePath.pathDepth() }
+                .thenByDescending { snapshot -> snapshot.type.storageValue == FileEntity.TYPE_FOLDER }
+                .thenBy { snapshot -> snapshot.name.lowercase() }
+        )
+    }
+
+    // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 ShareParents.resolveParentId(snapshot, map)。
+    // [设计] 为什么这样写：快照里的 relativePath 表示原始父路径，保存时要把它转换成新生成的本地文件夹 id。
+    private fun ShareSnapshotFile.resolveSavedParentId(
+        targetParentId: String?,
+        savedFolderIdsByOriginalPath: Map<String, String>
+    ): String? {
+        val parentPath = relativePath?.takeIf { path -> path.isNotBlank() }
+            ?: return targetParentId
+        return savedFolderIdsByOriginalPath[parentPath]
+            ?: error("分享目录结构不完整：$parentPath")
+    }
+
+    // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 ShareSnapshots.isTopLevel(snapshot)。
+    // [设计] 为什么这样写：首页最近转存只记录分享根项，文件夹内部子文件仍会保存到文件表，但不会把最近转存列表刷屏。
+    private fun ShareSnapshotFile.isTopLevelShareSnapshot(): Boolean {
+        return relativePath.isNullOrBlank()
+    }
+
+    // [设计] 为什么这样写：保存分享遇到同名文件时自动追加编号，保持演示流程不中断，也避免覆盖用户已有文件。
+    private suspend fun resolveUniqueShareSaveName(
+        parentId: String?,
+        requestedName: String,
+        preserveExtension: Boolean,
+        reservedNamesByParent: MutableMap<String?, MutableSet<String>>
+    ): String {
+        val cleanedName = requestedName.ifBlank { DEFAULT_SHARE_SAVE_FILE_NAME }
+        val reservedNames = reservedNamesByParent.getOrPut(parentId) { mutableSetOf() }
+        if (cleanedName.isAvailableInFolder(parentId, reservedNames)) {
+            reservedNames += cleanedName.lowercase()
+            return cleanedName
+        }
+
+        val nameParts = cleanedName.toShareSaveNameParts(preserveExtension)
+        var index = 1
+        while (true) {
+            val candidate = "${nameParts.baseName} ($index)${nameParts.extension}"
+            if (candidate.isAvailableInFolder(parentId, reservedNames)) {
+                reservedNames += candidate.lowercase()
+                return candidate
+            }
+            index++
+        }
+    }
+
+    // [语法] 这是 String 的扩展函数，相当于 Java 静态工具方法 NameChecks.isAvailableInFolder(name, parentId, reserved)。
+    // [设计] 为什么这样写：同名判断既要看数据库已有文件，也要看本次事务里刚准备保存的同级文件。
+    private suspend fun String.isAvailableInFolder(
+        parentId: String?,
+        reservedNames: Set<String>
+    ): Boolean {
+        return lowercase() !in reservedNames &&
+            fileDao.countActiveNameInFolder(parentId, this, excludeFileId = null) == 0
+    }
+
+    // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 ShareSnapshotMappers.toFileEntity(snapshot)。
+    // [设计] 为什么这样写：分享快照到文件表的字段转换集中处理，保存事务只关心“按顺序插入哪些记录”。
+    private fun ShareSnapshotFile.toShareSavedEntity(
+        fileId: String,
+        parentId: String?,
+        savedName: String,
+        transferredAt: Long
+    ): FileEntity {
+        return FileEntity(
+            fileId = fileId,
+            parentId = parentId,
+            name = savedName,
+            type = type.storageValue,
+            mimeType = toShareSavedMimeType(),
+            sizeBytes = sizeBytes,
+            localPath = localPath,
+            originalUri = null,
+            createdAt = transferredAt,
+            updatedAt = transferredAt,
+            openedAt = null,
+            transferredAt = transferredAt,
+            isDeleted = false,
+            isPinned = false,
+            source = FileEntity.SOURCE_SHARE_SAVE
+        )
+    }
+
+    // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 MimeTypes.fromSnapshot(snapshot)。
+    // [设计] 为什么这样写：分享快照没有单独保存 MIME，保存到网盘时根据类型补一个稳定兜底值，方便后续视频/TXT 打开链路复用。
+    private fun ShareSnapshotFile.toShareSavedMimeType(): String? {
+        return when (type.storageValue) {
+            FileEntity.TYPE_TXT -> "text/plain"
+            FileEntity.TYPE_VIDEO -> "video/*"
+            FileEntity.TYPE_IMAGE -> "image/*"
+            FileEntity.TYPE_AUDIO -> "audio/*"
+            else -> null
+        }
+    }
+
+    // [语法] private data class 只在当前类内部使用，相当于 Java 私有静态小对象。
+    // [设计] 为什么这样写：同名追加编号时需要拆出基础名和扩展名，文件保留扩展名，文件夹则把完整名称当基础名。
+    private data class ShareSaveNameParts(
+        val baseName: String,
+        val extension: String
+    )
+
+    // [语法] 这是 String 的扩展函数，相当于 Java 静态工具方法 FileNames.toShareSaveNameParts(name, preserveExtension)。
+    // [设计] 为什么这样写：分享保存的同名规则和上传类似，但文件夹不能把点号后的内容误当扩展名。
+    private fun String.toShareSaveNameParts(preserveExtension: Boolean): ShareSaveNameParts {
+        if (!preserveExtension) {
+            return ShareSaveNameParts(
+                baseName = this,
+                extension = ""
+            )
+        }
+        val dotIndex = lastIndexOf('.')
+        if (dotIndex <= 0 || dotIndex == lastIndex) {
+            return ShareSaveNameParts(
+                baseName = this,
+                extension = ""
+            )
+        }
+        return ShareSaveNameParts(
+            baseName = substring(0, dotIndex),
+            extension = substring(dotIndex)
+        )
+    }
+
+    // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 SharePaths.originalFullPath(snapshot)。
+    // [设计] 为什么这样写：子文件通过原始 relativePath 找父目录，保存文件夹后要把“原始完整路径”映射到新 fileId。
+    private fun ShareSnapshotFile.originalFullPath(): String {
+        return relativePath.appendPathSegment(name)
+    }
+
+    // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 SharePaths.append(path, segment)。
+    // [设计] 为什么这样写：分享快照里的 relativePath 使用 / 分隔，统一拼接能避免多层文件夹路径格式不一致。
+    private fun String?.appendPathSegment(segment: String): String {
+        return if (isNullOrBlank()) {
+            segment
+        } else {
+            "$this/$segment"
+        }
+    }
+
+    // [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 SharePaths.depth(path)。
+    // [设计] 为什么这样写：保存排序要按父路径深度处理，根目录深度为 0，多层路径按 / 数量计算。
+    private fun String?.pathDepth(): Int {
+        return if (isNullOrBlank()) {
+            0
+        } else {
+            split("/").size
+        }
+    }
+
     // [语法] private data class 只在当前类内部使用，相当于 Java 里的私有静态小对象。
     // [设计] 为什么这样写：把“基础名”和“扩展名”拆出来，上传同名追加编号时才能保留 .txt/.mp4 这类后缀。
     private data class UploadNameParts(
@@ -393,5 +613,6 @@ class FileRepositoryImpl @Inject constructor(
     // [设计] 为什么这样写：兜底文件名只服务上传流程，放在 Repository 实现附近比散落在调用方更容易维护。
     companion object {
         private const val DEFAULT_UPLOAD_FILE_NAME = "未命名文件"
+        private const val DEFAULT_SHARE_SAVE_FILE_NAME = "未命名分享文件"
     }
 }
