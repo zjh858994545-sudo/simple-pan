@@ -1,5 +1,6 @@
 package com.example.simple_pan.ui.share
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +10,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,7 +28,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,7 +75,10 @@ private fun SharePreviewContent(
     onRetry: () -> Unit,
     onSaveClick: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -105,12 +114,15 @@ private fun SharePreviewHeader(onBackClick: () -> Unit) {
     ) {
         // [语法] TextButton 后面的 { } 是尾随 lambda，用来声明按钮内部要显示的 Compose 内容。
         TextButton(onClick = onBackClick) {
-            Text(text = "返回")
+            Text(text = "< 返回")
         }
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = "分享预览",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -194,7 +206,7 @@ private fun SharePreviewLoaded(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         SharePreviewSummary(state = state)
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         ShareSaveAction(
             isSaving = state.isSaving,
             canSave = state.files.isNotEmpty(),
@@ -202,7 +214,7 @@ private fun SharePreviewLoaded(
             saveErrorMessage = state.saveErrorMessage,
             onSaveClick = onSaveClick
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         if (state.files.isEmpty()) {
             SharePreviewEmpty()
         } else {
@@ -220,43 +232,76 @@ private fun ShareSaveAction(
     saveErrorMessage: String?,
     onSaveClick: () -> Unit
 ) {
-    Button(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        enabled = canSave && !isSaving,
-        onClick = onSaveClick
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Text(text = if (isSaving) "保存中" else "保存到网盘")
-    }
-    val message = saveErrorMessage ?: saveMessage
-    if (message != null) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (saveErrorMessage != null) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.primary
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "保存到我的网盘",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "保存后会写入最近转存",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Button(
+                    enabled = canSave && !isSaving,
+                    onClick = onSaveClick
+                ) {
+                    Text(text = if (isSaving) "保存中" else "保存")
+                }
             }
-        )
+            val message = saveErrorMessage ?: saveMessage
+            if (message != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (saveErrorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
+                )
+            }
+        }
     }
 }
 
 // [设计] 为什么这样写：标题、类型、数量和脱敏分享码集中显示，用户进入分享页后能立即确认打开的是哪份分享。
 @Composable
 private fun SharePreviewSummary(state: SharePreviewState) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = state.title.ifBlank { "我的分享" },
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "${state.shareType.toDisplayName()} | ${state.files.size} 项 | ${state.token.toMaskedShareToken()}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = MaterialTheme.shapes.medium
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
+            Text(
+                text = state.title.ifBlank { "我的分享" },
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "${state.shareType.toDisplayName()} · ${state.files.size} 项 · ${state.token.toMaskedShareToken()}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 }
 
@@ -267,24 +312,40 @@ private fun SharePreviewEmpty() {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "暂无分享文件",
-            style = MaterialTheme.typography.bodyLarge
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "暂无分享文件",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "这个分享没有可保存的文件快照",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
 // [设计] 为什么这样写：LazyColumn 用 snapshotId/sourceFileId/name 组合成稳定 key，后续快照列表变化时行状态不会串位。
 @Composable
 private fun ShareSnapshotList(files: List<ShareSnapshotFile>) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是当前列表项参数，类似 Java 回调里的参数。
-        items(
-            items = files,
-            key = { file -> file.toStableKey() }
-        ) { file ->
-            ShareSnapshotRow(file = file)
-            HorizontalDivider()
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是当前列表项参数，类似 Java 回调里的参数。
+            items(
+                items = files,
+                key = { file -> file.toStableKey() }
+            ) { file ->
+                ShareSnapshotRow(file = file)
+                HorizontalDivider()
+            }
         }
     }
 }
@@ -292,44 +353,42 @@ private fun ShareSnapshotList(files: List<ShareSnapshotFile>) {
 // [设计] 为什么这样写：列表行只展示快照模型 ShareSnapshotFile，不反查原始 CloudFile，确保分享页展示的是创建分享那一刻的数据。
 @Composable
 private fun ShareSnapshotRow(file: ShareSnapshotFile) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ShareSnapshotTypeBadge(fileType = file.type)
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            ShareSnapshotTypeBadge(fileType = file.type)
+        },
+        headlineContent = {
             Text(
                 text = file.name,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold
             )
+        },
+        supportingContent = {
             Text(
                 text = file.toDescriptionText(),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
+    )
 }
 
 // [设计] 为什么这样写：阶段内不新增图标依赖，先用固定宽度类型徽章表达文件类型，和文件页的类型标识保持一致。
 @Composable
 private fun ShareSnapshotTypeBadge(fileType: FileType) {
     Surface(
-        modifier = Modifier.width(48.dp),
+        modifier = Modifier.size(40.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shape = MaterialTheme.shapes.small
+        shape = MaterialTheme.shapes.medium
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
+        Box(contentAlignment = Alignment.Center) {
             Text(
                 text = fileType.toShortLabel(),
                 style = MaterialTheme.typography.labelMedium,
@@ -359,7 +418,7 @@ private fun ShareSnapshotFile.toDescriptionText(): String {
     } else {
         sizeBytes.toSizeText()
     }
-    return "${type.toDisplayName()} | $sizeText | $pathText"
+    return "${type.toDisplayName()} · $sizeText · $pathText"
 }
 
 // [语法] 这是 ShareSnapshotFile 的扩展函数，相当于 Java 静态工具方法 SnapshotKeys.toStableKey(file)。
@@ -409,12 +468,12 @@ private fun FileType.toDisplayName(): String {
 // [设计] 为什么这样写：徽章需要短标签而不是完整中文名，集中映射后后续换成真实图标也只改这里。
 private fun FileType.toShortLabel(): String {
     return when (this) {
-        FileType.Folder -> "DIR"
-        FileType.Video -> "MP4"
-        FileType.Txt -> "TXT"
-        FileType.Image -> "IMG"
-        FileType.Audio -> "AUD"
-        FileType.Other -> "FILE"
+        FileType.Folder -> "夹"
+        FileType.Video -> "视"
+        FileType.Txt -> "文"
+        FileType.Image -> "图"
+        FileType.Audio -> "音"
+        FileType.Other -> "其"
     }
 }
 

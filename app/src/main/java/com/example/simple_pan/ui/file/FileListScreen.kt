@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.util.AndroidRuntimeException
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,19 +19,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -39,16 +46,21 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -56,11 +68,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.simple_pan.deeplink.ShareLinkBuilder
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import com.example.simple_pan.ui.component.WukongEmptyState
+import com.example.simple_pan.ui.component.WukongPageBackground
+import com.example.simple_pan.ui.component.WukongPlusButton
+import com.example.simple_pan.ui.component.WukongSegmentedTabs
+import com.example.simple_pan.ui.component.WukongTopTab
+import com.example.simple_pan.ui.component.WukongTopTabs
 import java.io.File
+import kotlinx.coroutines.launch
 
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI 内容，数据来源仍然是 Room -> Repository -> ViewModel -> State。
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileListScreen(
+    onOpenPan: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenTransfer: () -> Unit,
     onOpenTxtReader: (fileId: String, fileName: String) -> Unit,
     onOpenSharePreview: (token: String) -> Unit,
     viewModel: FileListViewModel = hiltViewModel()
@@ -69,6 +92,9 @@ fun FileListScreen(
     // [设计] 为什么这样写：collectAsStateWithLifecycle 会随页面生命周期自动开始/停止收集，避免后台页面继续消耗资源。
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var isUploadSheetVisible by remember { mutableStateOf(false) }
+    val uploadSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
     // [设计] 为什么这样写：系统播放器属于 Android 平台能力，需要由 Screen 层拿到 Context 启动外部 Intent，避免 ViewModel 直接依赖 Activity。
     val context = LocalContext.current
     // [语法] LaunchedEffect 会在 Composable 进入组合时启动协程，并在离开组合时自动取消。
@@ -213,7 +239,29 @@ fun FileListScreen(
                 viewModel.onIntent(FileListIntent.ConfirmMove)
             },
             onUploadClick = {
-                uploadFileLauncher.launch(UPLOAD_MIME_TYPES)
+                isUploadSheetVisible = true
+            },
+            onOpenPan = onOpenPan,
+            onOpenSearch = onOpenSearch,
+            onOpenTransfer = onOpenTransfer
+        )
+    }
+
+    if (isUploadSheetVisible) {
+        WukongUploadSheet(
+            sheetState = uploadSheetState,
+            onDismiss = {
+                isUploadSheetVisible = false
+            },
+            onPickFile = { mimeTypes ->
+                isUploadSheetVisible = false
+                uploadFileLauncher.launch(mimeTypes)
+            },
+            onCreateFolder = {
+                isUploadSheetVisible = false
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("新建文件夹功能后续接入")
+                }
             }
         )
     }
@@ -246,15 +294,30 @@ private fun FileListContent(
     onEnterMoveTargetFolder: (CloudFile) -> Unit,
     onBackMoveTargetFolder: () -> Unit,
     onConfirmMove: () -> Unit,
-    onUploadClick: () -> Unit
+    onUploadClick: () -> Unit,
+    onOpenPan: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenTransfer: () -> Unit
 ) {
-    Surface(modifier = modifier.fillMaxSize()) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = WukongPageBackground
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
+                WukongTopTabs(
+                    selectedTab = WukongTopTab.File,
+                    onPanClick = onOpenPan,
+                    onFileClick = {},
+                    onBackClick = onBackToParent,
+                    onTransferClick = onOpenTransfer,
+                    onSearchClick = onOpenSearch
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 FileListHeader(
                     folderName = state.currentFolderName,
                     fileCount = state.files.size,
@@ -269,12 +332,12 @@ private fun FileListContent(
                     onExitManageMode = onExitManageMode,
                     onToggleSelectAllVisible = onToggleSelectAllVisible
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 FileFilterBar(
                     selectedFilter = state.filter,
                     onFilterChange = onFilterChange
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 FileSortSummary(sortType = state.sortType)
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -299,6 +362,7 @@ private fun FileListContent(
                 }
 
                 if (state.isManageMode) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     FileManageActionBar(
                         selectedCount = state.selectedFileIds.size,
                         isCreatingShare = state.isCreatingShare,
@@ -355,34 +419,163 @@ private fun UploadFloatingActionButton(
     isUploading: Boolean,
     onUploadClick: () -> Unit
 ) {
-    FloatingActionButton(
-        modifier = modifier
-            .padding(20.dp)
-            .width(56.dp)
-            .height(56.dp),
-        containerColor = if (isUploading) {
-            MaterialTheme.colorScheme.surfaceVariant
-        } else {
-            MaterialTheme.colorScheme.primaryContainer
-        },
-        onClick = {
-            if (!isUploading) {
-                onUploadClick()
+    if (isUploading) {
+        Surface(
+            modifier = modifier
+                .padding(24.dp)
+                .size(64.dp),
+            color = Color.White,
+            shape = androidx.compose.foundation.shape.CircleShape
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.Black
+                )
             }
         }
+    } else {
+        WukongPlusButton(
+            modifier = modifier.padding(24.dp),
+            onClick = onUploadClick
+        )
+    }
+}
+
+// [设计] 为什么这样写：上传底部面板按参考图展示六个入口；除“新建文件夹”外都复用现有 SAF 上传链路。
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WukongUploadSheet(
+    sheetState: androidx.compose.material3.SheetState,
+    onDismiss: () -> Unit,
+    onPickFile: (Array<String>) -> Unit,
+    onCreateFolder: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.White,
+        dragHandle = null,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
-        if (isUploading) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .width(24.dp)
-                    .height(24.dp),
-                strokeWidth = 2.dp
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp, vertical = 22.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "上传文件",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.Black,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "文件将保存至「悟空网盘」",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF8F8F8F)
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        text = "×",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.Black
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(28.dp))
+            UploadOptionGrid(
+                onPickFile = onPickFile,
+                onCreateFolder = onCreateFolder
             )
-        } else {
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "+",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                text = "网盘隐私政策  |  反馈与建议",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFF4A4A4A)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+// [设计] 为什么这样写：上传面板使用两行三列近似参考图入口密度；MIME 类型只影响系统文件选择器过滤。
+@Composable
+private fun UploadOptionGrid(
+    onPickFile: (Array<String>) -> Unit,
+    onCreateFolder: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            UploadOptionItem("照片", "图", Color(0xFFF7B733)) {
+                onPickFile(arrayOf("image/*"))
+            }
+            UploadOptionItem("视频", "视", Color(0xFF8B5CF6)) {
+                onPickFile(arrayOf("video/*"))
+            }
+            UploadOptionItem("音频", "音", Color(0xFFF35D72)) {
+                onPickFile(arrayOf("audio/*"))
+            }
+            UploadOptionItem("压缩包", "压", Color(0xFF7C6BE8)) {
+                onPickFile(arrayOf("application/zip", "application/x-zip-compressed", "application/x-rar-compressed"))
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(38.dp)
+        ) {
+            UploadOptionItem("文档", "文", Color(0xFF58C978)) {
+                onPickFile(arrayOf("text/*", "application/pdf", "application/msword"))
+            }
+            UploadOptionItem("新建文件夹", "+", Color(0xFF6D83F2), onClick = onCreateFolder)
+        }
+    }
+}
+
+// [设计] 为什么这样写：每个上传入口用彩色圆角块 + 文案表达类型，不复制参考图具体图标，但保留可识别的视觉层级。
+@Composable
+private fun UploadOptionItem(
+    label: String,
+    iconText: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = Color.Transparent,
+        onClick = onClick
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                modifier = Modifier.size(58.dp),
+                color = color,
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = iconText,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.Black
             )
         }
     }
@@ -467,15 +660,36 @@ private fun FileManageActionBar(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp
+        tonalElevation = 6.dp,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            HorizontalDivider()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = "已选 $selectedCount 项",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (hasSelection) "可执行批量操作" else "请选择文件",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 FileManageActionButton(
                     modifier = Modifier.weight(1f),
@@ -514,7 +728,7 @@ private fun FileManageActionButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    Button(
+    TextButton(
         modifier = modifier,
         enabled = enabled,
         onClick = onClick
@@ -522,7 +736,9 @@ private fun FileManageActionButton(
         Text(
             text = text,
             maxLines = 1,
-            style = MaterialTheme.typography.labelMedium
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold
         )
     }
 }
@@ -819,37 +1035,26 @@ private fun FileFilterBar(
     selectedFilter: FileFilter,
     onFilterChange: (FileFilter) -> Unit
 ) {
-    // [语法] rememberScrollState() 返回 Compose 状态对象，horizontalScroll 使用它保存横向滚动位置。
-    // [设计] 为什么这样写：小屏下四个筛选项可能放不下，横向滚动能避免文字挤压或换行导致布局跳动。
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        for (filter in FileFilter.entries) {
-            FilterChip(
-                selected = filter == selectedFilter,
-                onClick = { onFilterChange(filter) },
-                label = {
-                    Text(text = filter.toDisplayName())
-                }
-            )
-        }
-    }
-}
-
-// [设计] 为什么这样写：阶段 2 只要求综合排序，先显示当前排序规则而不做下拉菜单，避免提前引入更多排序状态。
-@Composable
-private fun FileSortSummary(sortType: FileSortType) {
-    Text(
-        text = "排序：${sortType.toDisplayName()}",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+    val filters = FileFilter.entries
+    WukongSegmentedTabs(
+        items = filters.map { filter -> filter.toDisplayName() },
+        selectedIndex = filters.indexOf(selectedFilter),
+        onSelected = { index -> onFilterChange(filters[index]) }
     )
 }
 
-// [设计] 为什么这样写：头部展示当前目录名称和数量，让用户确认已经进入子目录；返回按钮留到下一步单独实现。
+// [设计] 为什么这样写：排序信息用工具栏式摘要展示，既保留当前规则可见性，又不提前引入额外排序状态。
+@Suppress("UNUSED_PARAMETER")
+@Composable
+private fun FileSortSummary(sortType: FileSortType) {
+    Text(
+        text = "按综合排序",
+        style = MaterialTheme.typography.titleMedium,
+        color = Color.Black
+    )
+}
+
+// [设计] 为什么这样写：头部同时承载目录标题、返回入口和管理态入口，让文件页像真实文件管理器一样先给用户明确当前位置和可执行动作。
 @Composable
 private fun FileListHeader(
     folderName: String,
@@ -864,56 +1069,80 @@ private fun FileListHeader(
     onExitManageMode: () -> Unit,
     onToggleSelectAllVisible: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        if (canBackToParent) {
-            // [设计] 为什么这样写：先做页面内返回按钮，不接系统返回键，符合本步骤“小而可验收”的边界。
-            Button(onClick = onBackToParent) {
-                Text(text = "返回上一级")
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+    if (!canBackToParent && !isManageMode) {
+        return
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (canBackToParent) {
+                TextButton(
+                    modifier = Modifier.heightIn(min = 40.dp),
+                    onClick = onBackToParent
+                ) {
+                    Text(text = "< 返回上一级")
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = folderName,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "$fileCount 项",
+                    text = if (isManageMode) {
+                        "管理模式 · $fileCount 项"
+                    } else {
+                        "$fileCount 项 · 长按可多选"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            // [设计] 为什么这样写：管理模式先放在列表头部入口，用户能主动进入；同一个按钮在管理态变成“完成”，让退出路径保持清晰。
-            Button(
+            TextButton(
+                colors = if (isManageMode) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                } else {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                },
                 onClick = if (isManageMode) onExitManageMode else onEnterManageMode
             ) {
                 Text(text = if (isManageMode) "完成" else "管理")
             }
         }
         if (isManageMode) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = MaterialTheme.shapes.medium
             ) {
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = "已选择 $selectedCount 项",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-                // [设计] 为什么这样写：全选按钮跟随当前可见列表状态切换文案，用户能一眼知道下一次点击会执行什么动作。
-                Button(
-                    onClick = onToggleSelectAllVisible,
-                    enabled = canSelectAllVisible
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = if (isAllVisibleSelected) "取消全选" else "全选")
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text = "已选择 $selectedCount 项",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    TextButton(
+                        enabled = canSelectAllVisible,
+                        onClick = onToggleSelectAllVisible
+                    ) {
+                        Text(text = if (isAllVisibleSelected) "取消全选" else "全选")
+                    }
                 }
             }
         }
@@ -930,7 +1159,11 @@ private fun FileListLoading() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = "正在从 Room 加载文件")
+            Text(
+                text = "正在加载文件",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -947,9 +1180,15 @@ private fun FileListError(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
+            text = "加载失败",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
             text = message,
             color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyLarge
+            style = MaterialTheme.typography.bodyMedium
         )
         Spacer(modifier = Modifier.height(12.dp))
         Button(onClick = onRetry) {
@@ -961,15 +1200,10 @@ private fun FileListError(
 // [设计] 为什么这样写：空状态保留给数据库为空或筛选无结果场景，确保 UI 不把“空列表”误表现成加载失败。
 @Composable
 private fun FileListEmpty(filter: FileFilter) {
-    Box(
+    WukongEmptyState(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = if (filter == FileFilter.All) "暂无文件" else "暂无该类型文件",
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
+        text = if (filter == FileFilter.All) "暂无内容" else "暂无${filter.toDisplayName()}内容"
+    )
 }
 
 // [设计] 为什么这样写：LazyColumn 用稳定 key 绑定 fileId，后续排序/删除/管理态选择时不会因为 index 变化导致行状态串位。
@@ -982,7 +1216,10 @@ private fun FileListItems(
     onFileClick: (CloudFile) -> Unit,
     onToggleFileSelection: (CloudFile) -> Unit
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
         // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是显式命名参数，类似 Java 回调里的参数名。
         items(
             items = files,
@@ -996,7 +1233,6 @@ private fun FileListItems(
                 onFileClick = onFileClick,
                 onToggleFileSelection = onToggleFileSelection
             )
-            HorizontalDivider()
         }
     }
 }
@@ -1030,52 +1266,73 @@ private fun FileRow(
         )
     }
 
-    ListItem(
-        modifier = rowModifier,
-        leadingContent = {
-            FileTypeBadge(fileType = file.type)
-        },
-        headlineContent = {
-            Text(
-                text = file.name,
-                maxLines = 1
-            )
-        },
-        supportingContent = {
-            Text(
-                text = "${file.type.toDisplayName()} | ${file.sizeBytes.toSizeText()}",
-                maxLines = 1
-            )
-        },
-        trailingContent = if (isManageMode) {
-            {
-                // [设计] 为什么这样写：管理态用系统 Checkbox 表达二元选择，视觉语义明确；状态仍由 selectedFileIds 驱动，避免控件自己记状态。
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = {
-                        onToggleFileSelection(file)
-                    }
-                )
-            }
+    Surface(
+        modifier = rowModifier.fillMaxWidth(),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
         } else {
-            null
-        }
-    )
+            MaterialTheme.colorScheme.surface
+        },
+        shape = MaterialTheme.shapes.small
+    ) {
+        ListItem(
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            leadingContent = {
+                FileTypeBadge(fileType = file.type)
+            },
+            headlineContent = {
+                Text(
+                    text = file.name,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            supportingContent = {
+                Text(
+                    text = "${file.type.toDisplayName()} · ${file.sizeBytes.toSizeText()}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            trailingContent = if (isManageMode) {
+                {
+                    // [设计] 为什么这样写：管理态用系统 Checkbox 表达二元选择，视觉语义明确；状态仍由 selectedFileIds 驱动，避免控件自己记状态。
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = {
+                            onToggleFileSelection(file)
+                        }
+                    )
+                }
+            } else {
+                {
+                    Text(
+                        text = if (file.type == FileType.Folder) "进入" else "打开",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        )
+    }
 }
 
-// [设计] 为什么这样写：当前阶段不额外引入图标依赖，用固定宽度的类型徽章表达“图标/标识”，既能演示类型差异，也不会破坏依赖约束。
+// [设计] 为什么这样写：当前阶段不额外引入图标依赖，用固定尺寸类型徽章表达“图标/标识”，既能演示类型差异，也不会破坏依赖约束。
 @Composable
 private fun FileTypeBadge(fileType: FileType) {
     val badge = fileType.toBadgeSpec()
     Surface(
-        modifier = Modifier.width(48.dp),
+        modifier = Modifier.size(42.dp),
         color = badge.containerColor,
         contentColor = badge.contentColor,
-        shape = MaterialTheme.shapes.small
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, badge.contentColor.copy(alpha = 0.12f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.Center
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = badge.shortLabel,
@@ -1084,7 +1341,6 @@ private fun FileTypeBadge(fileType: FileType) {
             )
         }
     }
-    Spacer(modifier = Modifier.width(8.dp))
 }
 
 // [语法] data class 相当于 Java 的 POJO/Bean，自动生成 equals/hashCode/toString/copy，适合承载 UI 徽章需要的几个值。
@@ -1102,32 +1358,32 @@ private fun FileType.toBadgeSpec(): FileTypeBadgeSpec {
     val colorScheme = MaterialTheme.colorScheme
     return when (this) {
         FileType.Folder -> FileTypeBadgeSpec(
-            shortLabel = "DIR",
+            shortLabel = "夹",
             containerColor = colorScheme.primaryContainer,
             contentColor = colorScheme.onPrimaryContainer
         )
         FileType.Video -> FileTypeBadgeSpec(
-            shortLabel = "MP4",
+            shortLabel = "视",
             containerColor = colorScheme.tertiaryContainer,
             contentColor = colorScheme.onTertiaryContainer
         )
         FileType.Txt -> FileTypeBadgeSpec(
-            shortLabel = "TXT",
+            shortLabel = "文",
             containerColor = colorScheme.secondaryContainer,
             contentColor = colorScheme.onSecondaryContainer
         )
         FileType.Image -> FileTypeBadgeSpec(
-            shortLabel = "IMG",
+            shortLabel = "图",
             containerColor = colorScheme.surfaceVariant,
             contentColor = colorScheme.onSurfaceVariant
         )
         FileType.Audio -> FileTypeBadgeSpec(
-            shortLabel = "AUD",
+            shortLabel = "音",
             containerColor = colorScheme.inversePrimary,
             contentColor = colorScheme.onPrimaryContainer
         )
         FileType.Other -> FileTypeBadgeSpec(
-            shortLabel = "FILE",
+            shortLabel = "其",
             containerColor = colorScheme.surfaceVariant,
             contentColor = colorScheme.onSurfaceVariant
         )
@@ -1158,11 +1414,22 @@ private fun FileFilter.toDisplayName(): String {
     }
 }
 
+// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileFilterDisplay.toChipText(filter)。
+// [设计] 为什么这样写：筛选 Chip 需要更短的文案，避免小屏横向滚动时占用过多空间；完整类型名仍由 toDisplayName 复用。
+private fun FileFilter.toChipText(): String {
+    return when (this) {
+        FileFilter.All -> "全部"
+        FileFilter.Image -> "图片"
+        FileFilter.Video -> "视频"
+        FileFilter.Document -> "文档"
+    }
+}
+
 // [语法] 这是扩展函数，相当于 Java 静态工具方法 FileSortTypeDisplay.toDisplayName(sortType)。
 // [设计] 为什么这样写：排序枚举只表达策略，具体文案放 UI 层，后续如果增加排序菜单也能复用。
 private fun FileSortType.toDisplayName(): String {
     return when (this) {
-        FileSortType.Comprehensive -> "综合排序（文件夹优先 · 置顶优先 · 更新时间）"
+        FileSortType.Comprehensive -> "综合排序"
     }
 }
 

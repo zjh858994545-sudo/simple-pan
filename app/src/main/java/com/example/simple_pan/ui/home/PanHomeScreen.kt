@@ -1,6 +1,8 @@
 package com.example.simple_pan.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,30 +10,44 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.RecentRecord
+import com.example.simple_pan.ui.component.WukongPageBackground
+import com.example.simple_pan.ui.component.WukongPlusButton
+import com.example.simple_pan.ui.component.WukongTopTab
+import com.example.simple_pan.ui.component.WukongTopTabs
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI，首页数据仍然走 Repository/Room，不在 Composable 里硬编码假记录。
 @Composable
 fun PanHomeScreen(
+    onOpenFiles: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenTransfer: () -> Unit,
     viewModel: PanHomeViewModel = hiltViewModel()
 ) {
     // [语法] by 是 Kotlin 委托语法，这里把 State<PanHomeState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
@@ -40,6 +56,9 @@ fun PanHomeScreen(
 
     PanHomeContent(
         state = state,
+        onOpenFiles = onOpenFiles,
+        onOpenSearch = onOpenSearch,
+        onOpenTransfer = onOpenTransfer,
         onRetry = {
             viewModel.onIntent(PanHomeIntent.Retry)
         }
@@ -50,13 +69,58 @@ fun PanHomeScreen(
 @Composable
 private fun PanHomeContent(
     state: PanHomeState,
+    onOpenFiles: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenTransfer: () -> Unit,
     onRetry: () -> Unit
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = WukongPageBackground
+    ) {
         when {
             state.isLoading -> HomeLoading()
             state.errorMessage != null -> HomeError(message = state.errorMessage, onRetry = onRetry)
-            else -> HomeDashboard(state = state)
+            else -> Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                ) {
+                    WukongTopTabs(
+                        selectedTab = WukongTopTab.Pan,
+                        onPanClick = {},
+                        onFileClick = onOpenFiles,
+                        onBackClick = {},
+                        onTransferClick = onOpenTransfer,
+                        onSearchClick = onOpenSearch
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PanProfileCard(state = state)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    RecentPanel(
+                        title = "最近转存",
+                        emptyText = "暂无转存记录",
+                        records = state.recentTransfer,
+                        onAllClick = onOpenFiles
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    RecentPanel(
+                        title = "最近浏览",
+                        emptyText = "暂无浏览记录",
+                        records = state.recentOpen,
+                        onAllClick = onOpenFiles
+                    )
+                    Spacer(modifier = Modifier.height(110.dp))
+                }
+                WukongPlusButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 22.dp, bottom = 26.dp),
+                    onClick = onOpenFiles
+                )
+            }
         }
     }
 }
@@ -64,14 +128,8 @@ private fun PanHomeContent(
 // [设计] 为什么这样写：首页加载态明确展示，避免首次 mock 入库和最近记录 Flow 组合期间出现白屏。
 @Composable
 private fun HomeLoading() {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        CircularProgressIndicator()
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(text = "正在加载网盘首页")
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = Color.Black)
     }
 }
 
@@ -89,203 +147,255 @@ private fun HomeError(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
+            text = "首页加载失败",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black,
+            color = Color.Black
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
             text = message,
             color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyLarge
+            style = MaterialTheme.typography.bodyMedium
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         Button(onClick = onRetry) {
             Text(text = "重试")
         }
     }
 }
 
-// [设计] 为什么这样写：第 8 步只搭首页核心信息区和最近记录区，不接上传/打开动作，保证阶段 1 骨架稳定。
+// [设计] 为什么这样写：账号卡片按参考图承载容量、管理空间、签到角标和三列统计，是网盘页第一视觉焦点。
 @Composable
-private fun HomeDashboard(state: PanHomeState) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Text(
-            text = "网盘",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        ProfileSection(userName = state.userName)
-        Spacer(modifier = Modifier.height(18.dp))
-        SpaceSection(
-            usedBytes = state.usedBytes,
-            fileCount = state.fileCount
-        )
-        Spacer(modifier = Modifier.height(22.dp))
-        RecentSection(
-            title = "最近浏览",
-            emptyText = "暂无浏览记录",
-            records = state.recentOpen
-        )
-        Spacer(modifier = Modifier.height(22.dp))
-        RecentSection(
-            title = "最近转存",
-            emptyText = "暂无转存记录",
-            records = state.recentTransfer
-        )
-    }
-}
+private fun PanProfileCard(state: PanHomeState) {
+    val totalBytes = 10L * 1024L * 1024L * 1024L
+    val progress = (state.usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
 
-// [设计] 为什么这样写：个人信息先做稳定骨架，后续如果接登录或用户配置，只需要替换 ViewModel 状态来源。
-@Composable
-private fun ProfileSection(userName: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = userName,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            text = "本地演示账号",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-// [设计] 为什么这样写：空间信息从 Room 根目录文件汇总而来，不是静态假数字；后续上传文件后可以自然变动。
-@Composable
-private fun SpaceSection(
-    usedBytes: Long,
-    fileCount: Int
-) {
-    val maxBytes = 256L * 1024L * 1024L
-    val progress = (usedBytes.toFloat() / maxBytes.toFloat()).coerceIn(0f, 1f)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp),
+            color = Color.White,
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, Color(0xFFF0F0F0))
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        modifier = Modifier.size(72.dp),
+                        color = Color(0xFF202020),
+                        shape = CircleShape
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "SP",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 18.dp)
+                    ) {
+                        Text(
+                            text = "已用空间：${state.usedBytes.toSizeText()}/10G",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.Black,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color.Black,
+                            trackColor = Color(0xFFEDEDED)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "管理空间 >",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color(0xFF666666)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PanStatItem(
+                        modifier = Modifier.weight(1f),
+                        title = "我的订阅",
+                        value = "0"
+                    )
+                    VerticalDivider()
+                    PanStatItem(
+                        modifier = Modifier.weight(1f),
+                        title = "我的分享",
+                        value = state.recentTransfer.size.toString()
+                    )
+                    VerticalDivider()
+                    PanStatItem(
+                        modifier = Modifier.weight(1f),
+                        title = "云收藏文件",
+                        value = state.fileCount.toString()
+                    )
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 4.dp),
+            color = Color(0xFFFFF19A),
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp)
         ) {
             Text(
-                text = "空间",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                text = "今日签到",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "$fileCount 项",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Color.Black,
+                fontWeight = FontWeight.Black
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        // [设计] 为什么这样写：进度条给首页一个可视化锚点，当前只用演示容量上限，后续可以替换为真实配额。
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "${usedBytes.toSizeText()} / 256 MB",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
-// [设计] 为什么这样写：最近浏览和最近转存共用同一个区块组件，减少重复 UI，也能体现两个列表来自同一种 RecentRecord 模型。
+// [设计] 为什么这样写：统计项和参考图一致用标题 + 数字 + 箭头，先展示已有本地数据能支撑的数量。
 @Composable
-private fun RecentSection(
+private fun PanStatItem(
+    modifier: Modifier = Modifier,
     title: String,
-    emptyText: String,
-    records: List<RecentRecord>
+    value: String
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            color = Color.Black,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        if (records.isEmpty()) {
-            Text(
-                text = emptyText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            for (record in records) {
-                RecentRow(record = record)
-                HorizontalDivider()
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+            text = "$value >",
+            style = MaterialTheme.typography.headlineSmall,
+            color = Color.Black,
+            fontWeight = FontWeight.Black
+        )
+    }
+}
+
+// [设计] 为什么这样写：卡片里的竖线是参考图中的统计分隔符，用固定尺寸避免布局随内容跳动。
+@Composable
+private fun VerticalDivider() {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 10.dp)
+            .size(width = 1.dp, height = 72.dp),
+        color = Color(0xFFE6E6E6)
+    ) {}
+}
+
+// [设计] 为什么这样写：最近转存/浏览是首页核心区块，按参考图做成白色横向大卡片，空状态和列表共用同一结构。
+@Composable
+private fun RecentPanel(
+    title: String,
+    emptyText: String,
+    records: List<RecentRecord>,
+    onAllClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        shape = RoundedCornerShape(26.dp)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.Black,
+                    fontWeight = FontWeight.Black
+                )
+                TextButton(onClick = onAllClick) {
+                    Text(
+                        text = "全部 >",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF666666)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(18.dp))
+            if (records.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = emptyText,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF9A9A9A)
+                    )
+                }
+            } else {
+                records.take(3).forEachIndexed { index, record ->
+                    RecentHomeRow(record = record)
+                    if (index != records.take(3).lastIndex) {
+                        HorizontalDivider(color = Color(0xFFEDEDED))
+                    }
+                }
             }
         }
     }
 }
 
-// [设计] 为什么这样写：最近记录行只展示领域模型 RecentRecord，不接触历史表 Entity，UI 不需要知道浏览和转存来自不同表。
+// [设计] 为什么这样写：最近记录行在首页保持简洁，只显示文件名和行为来源，详细打开仍在文件页完成。
 @Composable
-private fun RecentRow(record: RecentRecord) {
-    ListItem(
-        leadingContent = {
-            Text(
-                text = record.fileType.toShortLabel(),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        },
-        headlineContent = {
-            Text(text = record.fileName, maxLines = 1)
-        },
-        supportingContent = {
-            Text(text = record.toSupportingText())
+private fun RecentHomeRow(record: RecentRecord) {
+    Column(modifier = Modifier.padding(vertical = 10.dp)) {
+        Text(
+            text = record.fileName,
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.Black,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "${record.actionText()} · ${record.timestamp.toTimeLabel()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color(0xFF7A7A7A),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// [语法] 这是 RecentRecord 的扩展函数，相当于 Java 静态工具方法 RecentRecordDisplay.actionText(record)。
+// [设计] 为什么这样写：首页只需要短来源文案，避免把 transferType 原始存储值直接展示给用户。
+private fun RecentRecord.actionText(): String {
+    return when (recordType) {
+        RecentRecord.RecordType.Open -> "浏览"
+        RecentRecord.RecordType.Transfer -> when (transferType) {
+            "upload" -> "上传"
+            "share_save" -> "分享保存"
+            else -> "转存"
         }
-    )
-}
-
-// [语法] 这是 RecentRecord 的扩展函数，相当于 Java 静态工具方法 RecentRecordDisplay.toSupportingText(record)。
-// [设计] 为什么这样写：最近浏览和最近转存共用同一行 UI，但转存需要额外展示来源，集中生成文案可以避免 RecentRow 里堆分支。
-private fun RecentRecord.toSupportingText(): String {
-    val actionText = when (recordType) {
-        RecentRecord.RecordType.Open -> fileType.toDisplayName()
-        RecentRecord.RecordType.Transfer -> transferType.toTransferSourceText()
-    }
-    return "$actionText | ${timestamp.toTimeLabel()}"
-}
-
-// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toDisplayName(fileType)。
-// [设计] 为什么这样写：首页文件类型文案暂时局部管理，避免第 8 步跨到 util 抽公共格式化工具。
-private fun FileType.toDisplayName(): String {
-    return when (this) {
-        FileType.Folder -> "文件夹"
-        FileType.Video -> "视频"
-        FileType.Txt -> "文档"
-        FileType.Image -> "图片"
-        FileType.Audio -> "音频"
-        FileType.Other -> "其他"
-    }
-}
-
-// [语法] 这是扩展函数，给 FileType 增加首页短标签展示能力。
-// [设计] 为什么这样写：短标签只属于当前 UI 表达，不进入 domain，避免领域模型混入界面文案。
-private fun FileType.toShortLabel(): String {
-    return when (this) {
-        FileType.Folder -> "夹"
-        FileType.Video -> "视"
-        FileType.Txt -> "文"
-        FileType.Image -> "图"
-        FileType.Audio -> "音"
-        FileType.Other -> "其"
-    }
-}
-
-// [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 TransferSourceText.from(type)。
-// [设计] 为什么这样写：转存来源来自历史表，首页只需要把已知来源翻译成用户能看懂的“上传/分享保存”，未知值保守显示为“转存”。
-private fun String?.toTransferSourceText(): String {
-    return when (this) {
-        "upload" -> "上传"
-        "share_save" -> "分享保存"
-        else -> "转存"
     }
 }
 
@@ -302,7 +412,7 @@ private fun Long.toSizeText(): String {
 }
 
 // [语法] 这是 Long 的扩展函数，用时间戳生成简短展示文案。
-// [设计] 为什么这样写：第 8 步不引入日期格式化工具，先用相对简单的“时间戳后四位”占位，后续统一时间工具再替换。
+// [设计] 为什么这样写：首页最近记录需要用户可读时间，先用本地格式化替代“时间戳 xxxx”，演示时更像真实产品。
 private fun Long.toTimeLabel(): String {
-    return "时间戳 $this"
+    return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(this))
 }

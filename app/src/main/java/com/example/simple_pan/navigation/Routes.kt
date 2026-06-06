@@ -7,6 +7,9 @@ import android.net.Uri
 object Routes {
     const val HOME = "home"
     const val FILES = "files"
+    const val SEARCH = "search"
+    const val TRANSFER_LIST = "transfer_list"
+    const val TRANSFER_SETTINGS = "transfer_settings"
 
     const val TXT_READER_FILE_ID_ARG = "fileId"
     const val TXT_READER_FILE_NAME_ARG = "fileName"
