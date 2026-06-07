@@ -3,9 +3,11 @@ package com.example.simple_pan.di
 import com.example.simple_pan.data.repository.FileRepositoryImpl
 import com.example.simple_pan.data.repository.RecentRepositoryImpl
 import com.example.simple_pan.data.repository.ShareRepositoryImpl
+import com.example.simple_pan.data.repository.TransferRepositoryImpl
 import com.example.simple_pan.domain.repository.FileRepository
 import com.example.simple_pan.domain.repository.RecentRepository
 import com.example.simple_pan.domain.repository.ShareRepository
+import com.example.simple_pan.domain.repository.TransferRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -29,4 +31,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindShareRepository(impl: ShareRepositoryImpl): ShareRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTransferRepository(impl: TransferRepositoryImpl): TransferRepository
 }

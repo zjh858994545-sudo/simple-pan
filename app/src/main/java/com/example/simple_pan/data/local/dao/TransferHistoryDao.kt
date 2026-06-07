@@ -23,6 +23,25 @@ data class TransferHistoryWithFile(
     val transferType: String
 )
 
+// [语法] data class 相当于 Java 的查询结果 DTO，Room 会按 SQL 别名把列映射到属性。
+// [设计] 为什么这样写：传输页需要历史 id、文件大小和行为类型，比首页最近转存需要的字段更多，所以单独建投影，避免污染首页模型。
+data class TransferHistoryListItem(
+    @ColumnInfo(name = "history_id")
+    val historyId: Long,
+    @ColumnInfo(name = "file_id")
+    val fileId: String,
+    @ColumnInfo(name = "file_name")
+    val fileName: String,
+    @ColumnInfo(name = "file_type")
+    val fileType: String,
+    @ColumnInfo(name = "size_bytes")
+    val sizeBytes: Long,
+    @ColumnInfo(name = "transferred_at")
+    val transferredAt: Long,
+    @ColumnInfo(name = "transfer_type")
+    val transferType: String
+)
+
 // [设计] 为什么这样写：转存历史 DAO 单独管理上传和分享保存两类行为，让首页最近转存不是从文件创建时间硬推出来的假数据。
 @Dao
 interface TransferHistoryDao {
@@ -48,6 +67,26 @@ interface TransferHistoryDao {
         """
     )
     fun observeRecentTransferWithFiles(limit: Int): Flow<List<TransferHistoryWithFile>>
+
+    // [语法] IN (:transferTypes) 会由 Room 展开成 SQL 参数列表，适合按上传/分享保存等类型筛选。
+    // [设计] 为什么这样写：传输页按顶部“上传/下载”切换真实历史数据，DAO 只返回匹配类型的已完成记录，不构造进行中/失败假数据。
+    @Query(
+        """
+        SELECT history.id AS history_id,
+               history.file_id AS file_id,
+               file.name AS file_name,
+               file.type AS file_type,
+               file.size_bytes AS size_bytes,
+               history.transferred_at AS transferred_at,
+               history.transfer_type AS transfer_type
+        FROM transfer_history_entity AS history
+        INNER JOIN file_entity AS file ON file.file_id = history.file_id
+        WHERE file.is_deleted = 0
+          AND history.transfer_type IN (:transferTypes)
+        ORDER BY history.transferred_at DESC
+        """
+    )
+    fun observeTransferListItems(transferTypes: List<String>): Flow<List<TransferHistoryListItem>>
 
     // [设计] 为什么这样写：按文件追踪转存来源，后续答辩能解释上传和分享保存为什么不混在 file_entity.created_at 里。
     @Query("SELECT * FROM transfer_history_entity WHERE file_id = :fileId ORDER BY transferred_at DESC")
