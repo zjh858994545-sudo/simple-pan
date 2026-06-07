@@ -25,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +41,7 @@ import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongPlusButton
 import com.example.simple_pan.ui.component.WukongTopTab
 import com.example.simple_pan.ui.component.WukongTopTabs
+import com.example.simple_pan.ui.space.WukongSignInDialog
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,6 +52,12 @@ fun PanHomeScreen(
     onOpenFiles: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTransfer: () -> Unit,
+    onOpenRecentTransfer: () -> Unit,
+    onOpenRecentOpen: () -> Unit,
+    onOpenSpaceManagement: () -> Unit,
+    onOpenMySubscription: () -> Unit,
+    onOpenMyShare: () -> Unit,
+    onOpenCloudCollection: () -> Unit,
     viewModel: PanHomeViewModel = hiltViewModel()
 ) {
     // [语法] by 是 Kotlin 委托语法，这里把 State<PanHomeState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
@@ -59,6 +69,12 @@ fun PanHomeScreen(
         onOpenFiles = onOpenFiles,
         onOpenSearch = onOpenSearch,
         onOpenTransfer = onOpenTransfer,
+        onOpenRecentTransfer = onOpenRecentTransfer,
+        onOpenRecentOpen = onOpenRecentOpen,
+        onOpenSpaceManagement = onOpenSpaceManagement,
+        onOpenMySubscription = onOpenMySubscription,
+        onOpenMyShare = onOpenMyShare,
+        onOpenCloudCollection = onOpenCloudCollection,
         onRetry = {
             viewModel.onIntent(PanHomeIntent.Retry)
         }
@@ -72,8 +88,16 @@ private fun PanHomeContent(
     onOpenFiles: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTransfer: () -> Unit,
+    onOpenRecentTransfer: () -> Unit,
+    onOpenRecentOpen: () -> Unit,
+    onOpenSpaceManagement: () -> Unit,
+    onOpenMySubscription: () -> Unit,
+    onOpenMyShare: () -> Unit,
+    onOpenCloudCollection: () -> Unit,
     onRetry: () -> Unit
 ) {
+    var isSignInDialogVisible by remember { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = WukongPageBackground
@@ -97,20 +121,29 @@ private fun PanHomeContent(
                         onSearchClick = onOpenSearch
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    PanProfileCard(state = state)
+                    PanProfileCard(
+                        state = state,
+                        onOpenSpaceManagement = onOpenSpaceManagement,
+                        onShowSignInDialog = {
+                            isSignInDialogVisible = true
+                        },
+                        onOpenMySubscription = onOpenMySubscription,
+                        onOpenMyShare = onOpenMyShare,
+                        onOpenCloudCollection = onOpenCloudCollection
+                    )
                     Spacer(modifier = Modifier.height(18.dp))
                     RecentPanel(
                         title = "最近转存",
                         emptyText = "暂无转存记录",
                         records = state.recentTransfer,
-                        onAllClick = onOpenFiles
+                        onAllClick = onOpenRecentTransfer
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     RecentPanel(
                         title = "最近浏览",
                         emptyText = "暂无浏览记录",
                         records = state.recentOpen,
-                        onAllClick = onOpenFiles
+                        onAllClick = onOpenRecentOpen
                     )
                     Spacer(modifier = Modifier.height(110.dp))
                 }
@@ -122,6 +155,14 @@ private fun PanHomeContent(
                 )
             }
         }
+    }
+
+    if (isSignInDialogVisible) {
+        WukongSignInDialog(
+            onDismiss = {
+                isSignInDialogVisible = false
+            }
+        )
     }
 }
 
@@ -167,7 +208,14 @@ private fun HomeError(
 
 // [设计] 为什么这样写：账号卡片按参考图承载容量、管理空间、签到角标和三列统计，是网盘页第一视觉焦点。
 @Composable
-private fun PanProfileCard(state: PanHomeState) {
+private fun PanProfileCard(
+    state: PanHomeState,
+    onOpenSpaceManagement: () -> Unit,
+    onShowSignInDialog: () -> Unit,
+    onOpenMySubscription: () -> Unit,
+    onOpenMyShare: () -> Unit,
+    onOpenCloudCollection: () -> Unit
+) {
     val totalBytes = 10L * 1024L * 1024L * 1024L
     val progress = (state.usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
 
@@ -217,11 +265,16 @@ private fun PanProfileCard(state: PanHomeState) {
                             trackColor = Color(0xFFEDEDED)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "管理空间 >",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color(0xFF666666)
-                        )
+                        Surface(
+                            color = Color.Transparent,
+                            onClick = onOpenSpaceManagement
+                        ) {
+                            Text(
+                                text = "管理空间 >",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFF666666)
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
@@ -232,19 +285,22 @@ private fun PanProfileCard(state: PanHomeState) {
                     PanStatItem(
                         modifier = Modifier.weight(1f),
                         title = "我的订阅",
-                        value = "0"
+                        value = "0",
+                        onClick = onOpenMySubscription
                     )
                     VerticalDivider()
                     PanStatItem(
                         modifier = Modifier.weight(1f),
                         title = "我的分享",
-                        value = state.recentTransfer.size.toString()
+                        value = state.recentTransfer.size.toString(),
+                        onClick = onOpenMyShare
                     )
                     VerticalDivider()
                     PanStatItem(
                         modifier = Modifier.weight(1f),
                         title = "云收藏文件",
-                        value = state.fileCount.toString()
+                        value = state.fileCount.toString(),
+                        onClick = onOpenCloudCollection
                     )
                 }
             }
@@ -254,7 +310,8 @@ private fun PanProfileCard(state: PanHomeState) {
                 .align(Alignment.TopEnd)
                 .padding(end = 4.dp),
             color = Color(0xFFFFF19A),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp)
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp),
+            onClick = onShowSignInDialog
         ) {
             Text(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
@@ -272,24 +329,31 @@ private fun PanProfileCard(state: PanHomeState) {
 private fun PanStatItem(
     modifier: Modifier = Modifier,
     title: String,
-    value: String
+    value: String,
+    onClick: () -> Unit
 ) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.Black,
-            fontWeight = FontWeight.Black,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "$value >",
-            style = MaterialTheme.typography.headlineSmall,
-            color = Color.Black,
-            fontWeight = FontWeight.Black
-        )
+    Surface(
+        modifier = modifier,
+        color = Color.Transparent,
+        onClick = onClick
+    ) {
+        Column(horizontalAlignment = Alignment.Start) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.Black,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "$value >",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.Black,
+                fontWeight = FontWeight.Black
+            )
+        }
     }
 }
 

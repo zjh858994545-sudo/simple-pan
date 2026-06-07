@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -473,50 +474,24 @@ private fun WukongUploadSheet(
         sheetState = sheetState,
         containerColor = Color.White,
         dragHandle = null,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 22.dp)
+                .padding(start = 28.dp, top = 26.dp, end = 28.dp, bottom = 18.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(modifier = Modifier.weight(1f))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "上传文件",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = Color.Black,
-                        fontWeight = FontWeight.Black
-                    )
-                    Text(
-                        text = "文件将保存至「悟空网盘」",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFF8F8F8F)
-                    )
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss) {
-                    Text(
-                        text = "×",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.Black
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(28.dp))
+            UploadSheetHeader(onDismiss = onDismiss)
+            Spacer(modifier = Modifier.height(30.dp))
             UploadOptionGrid(
                 onPickFile = onPickFile,
                 onCreateFolder = onCreateFolder
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
             Text(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 text = "网盘隐私政策  |  反馈与建议",
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 color = Color(0xFF4A4A4A)
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -524,38 +499,112 @@ private fun WukongUploadSheet(
     }
 }
 
-// [设计] 为什么这样写：上传面板使用两行三列近似参考图入口密度；MIME 类型只影响系统文件选择器过滤。
+// [设计] 为什么这样写：标题区使用 Box 保证“上传文件”真正居中，右上角关闭按钮不会把标题挤偏。
+@Composable
+private fun UploadSheetHeader(onDismiss: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(62.dp)
+    ) {
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "上传文件",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.Black,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "文件将保存至「悟空网盘」",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFF8F8F8F)
+            )
+        }
+        TextButton(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(48.dp),
+            onClick = onDismiss
+        ) {
+            Text(
+                text = "×",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.Black,
+                fontWeight = FontWeight.Black
+            )
+        }
+    }
+}
+
+// [设计] 为什么这样写：上传面板按参考图固定为四列网格；第二行补两个空格位，让“文档/新建文件夹”保持左对齐而不是被拉散。
 @Composable
 private fun UploadOptionGrid(
     onPickFile: (Array<String>) -> Unit,
     onCreateFolder: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            UploadOptionItem("照片", "图", Color(0xFFF7B733)) {
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "照片",
+                iconText = "图",
+                color = Color(0xFFF8B63C)
+            ) {
                 onPickFile(arrayOf("image/*"))
             }
-            UploadOptionItem("视频", "视", Color(0xFF8B5CF6)) {
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "视频",
+                iconText = "视",
+                color = Color(0xFF8B5CF6)
+            ) {
                 onPickFile(arrayOf("video/*"))
             }
-            UploadOptionItem("音频", "音", Color(0xFFF35D72)) {
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "音频",
+                iconText = "音",
+                color = Color(0xFFF35D72)
+            ) {
                 onPickFile(arrayOf("audio/*"))
             }
-            UploadOptionItem("压缩包", "压", Color(0xFF7C6BE8)) {
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "压缩包",
+                iconText = "压",
+                color = Color(0xFF7C6BE8)
+            ) {
                 onPickFile(arrayOf("application/zip", "application/x-zip-compressed", "application/x-rar-compressed"))
             }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(38.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            UploadOptionItem("文档", "文", Color(0xFF58C978)) {
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "文档",
+                iconText = "文",
+                color = Color(0xFF58C978)
+            ) {
                 onPickFile(arrayOf("text/*", "application/pdf", "application/msword"))
             }
-            UploadOptionItem("新建文件夹", "+", Color(0xFF6D83F2), onClick = onCreateFolder)
+            UploadOptionItem(
+                modifier = Modifier.weight(1f),
+                label = "新建文件夹",
+                iconText = "+",
+                color = Color(0xFF6D83F2),
+                onClick = onCreateFolder
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
@@ -563,20 +612,25 @@ private fun UploadOptionGrid(
 // [设计] 为什么这样写：每个上传入口用彩色圆角块 + 文案表达类型，不复制参考图具体图标，但保留可识别的视觉层级。
 @Composable
 private fun UploadOptionItem(
+    modifier: Modifier = Modifier,
     label: String,
     iconText: String,
     color: Color,
     onClick: () -> Unit
 ) {
     Surface(
+        modifier = modifier,
         color = Color.Transparent,
         onClick = onClick
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Surface(
-                modifier = Modifier.size(58.dp),
+                modifier = Modifier.size(60.dp),
                 color = color,
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
@@ -589,9 +643,13 @@ private fun UploadOptionItem(
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
+                modifier = Modifier.fillMaxWidth(),
                 text = label,
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.Black
+                color = Color.Black,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

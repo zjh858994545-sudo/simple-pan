@@ -1,12 +1,15 @@
 package com.example.simple_pan.ui.component
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,44 +38,43 @@ fun WukongTopTabs(
     onTransferClick: () -> Unit,
     onSearchClick: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(64.dp)
     ) {
-        TextButton(onClick = onBackClick) {
-            Text(
-                text = "<",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.Black
+        WukongTopIconButton(
+            modifier = Modifier.align(Alignment.CenterStart),
+            text = "<",
+            onClick = onBackClick
+        )
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WukongTopTabText(
+                text = "网盘",
+                selected = selectedTab == WukongTopTab.Pan,
+                onClick = onPanClick
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            WukongTopTabText(
+                text = "文件",
+                selected = selectedTab == WukongTopTab.File,
+                onClick = onFileClick
             )
         }
-        Spacer(modifier = Modifier.weight(1f))
-        WukongTopTabText(
-            text = "网盘",
-            selected = selectedTab == WukongTopTab.Pan,
-            onClick = onPanClick
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        WukongTopTabText(
-            text = "文件",
-            selected = selectedTab == WukongTopTab.File,
-            onClick = onFileClick
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        TextButton(onClick = onTransferClick) {
-            Text(
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WukongTopIconButton(
                 text = "⇅",
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.Black
+                onClick = onTransferClick
             )
-        }
-        TextButton(onClick = onSearchClick) {
-            Text(
+            WukongTopIconButton(
                 text = "⌕",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.Black
+                onClick = onSearchClick
             )
         }
     }
@@ -92,6 +94,75 @@ private fun WukongTopTabText(
             color = if (selected) Color.Black else Color(0xFF8A8A8A),
             fontWeight = if (selected) FontWeight.Black else FontWeight.Normal
         )
+    }
+}
+
+// [设计] 为什么这样写：顶部图标按钮统一 48dp 点击区，能让标题真正居中，也更接近截图中的大图标触控范围。
+@Composable
+fun WukongTopIconButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextButton(
+        modifier = modifier.size(48.dp),
+        onClick = onClick
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.Black,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+// [设计] 为什么这样写：二级页面使用“返回 + 居中标题 + 右侧工具”的固定结构，避免每个页面手写后出现标题偏移。
+@Composable
+fun WukongTitleTopBar(
+    title: String,
+    onBackClick: () -> Unit,
+    onTransferClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    showTransferButton: Boolean = true,
+    showSearchButton: Boolean = true
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+    ) {
+        WukongTopIconButton(
+            modifier = Modifier.align(Alignment.CenterStart),
+            text = "<",
+            onClick = onBackClick
+        )
+        Text(
+            modifier = Modifier.align(Alignment.Center),
+            text = title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.Black,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (showTransferButton) {
+                WukongTopIconButton(
+                    text = "⇅",
+                    onClick = onTransferClick
+                )
+            }
+            if (showSearchButton) {
+                WukongTopIconButton(
+                    text = "⌕",
+                    onClick = onSearchClick
+                )
+            }
+        }
     }
 }
 
@@ -144,28 +215,91 @@ fun WukongEmptyState(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                modifier = Modifier.size(112.dp),
-                color = Color(0xFFE9ECEF),
-                contentColor = Color(0xFFB8BEC7),
-                shape = RoundedCornerShape(28.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "SP",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            WukongEmptyIllustration()
             Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = Color(0xFF9A9A9A)
             )
         }
+    }
+}
+
+// [设计] 为什么这样写：参考图的空状态是浅灰卡通插画；这里用 Compose 基础形状拼出低对比度插画，避免引入新图片依赖。
+@Composable
+private fun WukongEmptyIllustration() {
+    Box(
+        modifier = Modifier.size(width = 128.dp, height = 116.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(width = 58.dp, height = 76.dp)
+                .offset(x = 8.dp, y = 6.dp),
+            color = Color(0xFFE1E5EA),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Box {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                        .size(width = 34.dp, height = 18.dp),
+                    color = Color.White.copy(alpha = 0.86f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {}
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .size(width = 42.dp, height = 34.dp)
+                .align(Alignment.BottomStart)
+                .offset(x = 24.dp, y = (-8).dp),
+            color = Color(0xFFD7DCE3),
+            shape = RoundedCornerShape(6.dp)
+        ) {}
+        Surface(
+            modifier = Modifier
+                .size(50.dp)
+                .align(Alignment.TopCenter)
+                .offset(x = 10.dp, y = 8.dp),
+            color = Color(0xFFD9DEE5),
+            shape = CircleShape
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color.White, CircleShape)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(Color.White, CircleShape)
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .align(Alignment.TopStart)
+                .offset(x = 28.dp, y = 26.dp)
+                .background(Color(0xFFD9DEE5), CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .align(Alignment.TopStart)
+                .offset(x = 18.dp, y = 38.dp)
+                .background(Color(0xFFE3E7EC), CircleShape)
+        )
     }
 }
 

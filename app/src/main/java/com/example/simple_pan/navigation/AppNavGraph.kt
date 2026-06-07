@@ -28,8 +28,14 @@ import com.example.simple_pan.deeplink.DeepLinkParser
 import com.example.simple_pan.ui.file.FileListScreen
 import com.example.simple_pan.ui.home.PanHomeScreen
 import com.example.simple_pan.ui.reader.TxtReaderScreen
+import com.example.simple_pan.ui.recent.RecentRecordsScreen
+import com.example.simple_pan.ui.recent.RecentRecordsType
 import com.example.simple_pan.ui.search.PanSearchScreen
 import com.example.simple_pan.ui.share.SharePreviewScreen
+import com.example.simple_pan.ui.space.CloudCollectionScreen
+import com.example.simple_pan.ui.space.SimplePanEmptyScreen
+import com.example.simple_pan.ui.space.SpaceManagementScreen
+import com.example.simple_pan.ui.space.TotalSpaceDetailScreen
 import com.example.simple_pan.ui.transfer.TransferListScreen
 import com.example.simple_pan.ui.transfer.TransferSettingsScreen
 import kotlinx.coroutines.delay
@@ -73,6 +79,24 @@ fun AppNavGraph() {
                     },
                     onOpenTransfer = {
                         navController.navigate(Routes.TRANSFER_LIST)
+                    },
+                    onOpenRecentTransfer = {
+                        navController.navigate(Routes.recentRecords(Routes.RECENT_RECORD_TYPE_TRANSFER))
+                    },
+                    onOpenRecentOpen = {
+                        navController.navigate(Routes.recentRecords(Routes.RECENT_RECORD_TYPE_OPEN))
+                    },
+                    onOpenSpaceManagement = {
+                        navController.navigate(Routes.SPACE_MANAGEMENT)
+                    },
+                    onOpenMySubscription = {
+                        navController.navigate(Routes.MY_SUBSCRIPTION)
+                    },
+                    onOpenMyShare = {
+                        navController.navigate(Routes.MY_SHARE)
+                    },
+                    onOpenCloudCollection = {
+                        navController.navigate(Routes.CLOUD_COLLECTION)
                     }
                 )
             }
@@ -127,6 +151,101 @@ fun AppNavGraph() {
                 )
             }
 
+            composable(Routes.SPACE_MANAGEMENT) {
+                SpaceManagementScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onOpenSearch = {
+                        navController.navigate(Routes.SEARCH)
+                    },
+                    onOpenTransfer = {
+                        navController.navigate(Routes.TRANSFER_LIST)
+                    },
+                    onOpenTotalSpaceDetail = {
+                        navController.navigate(Routes.TOTAL_SPACE_DETAIL)
+                    },
+                    onOpenCloudCollection = {
+                        navController.navigate(Routes.CLOUD_COLLECTION)
+                    }
+                )
+            }
+
+            composable(Routes.TOTAL_SPACE_DETAIL) {
+                TotalSpaceDetailScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Routes.MY_SUBSCRIPTION) {
+                SimplePanEmptyScreen(
+                    title = "我的订阅",
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onOpenSearch = {
+                        navController.navigate(Routes.SEARCH)
+                    },
+                    onOpenTransfer = {
+                        navController.navigate(Routes.TRANSFER_LIST)
+                    }
+                )
+            }
+
+            composable(Routes.MY_SHARE) {
+                SimplePanEmptyScreen(
+                    title = "我的分享",
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onOpenSearch = {
+                        navController.navigate(Routes.SEARCH)
+                    },
+                    onOpenTransfer = {
+                        navController.navigate(Routes.TRANSFER_LIST)
+                    }
+                )
+            }
+
+            composable(Routes.CLOUD_COLLECTION) {
+                CloudCollectionScreen(
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onOpenSearch = {
+                        navController.navigate(Routes.SEARCH)
+                    },
+                    onOpenTransfer = {
+                        navController.navigate(Routes.TRANSFER_LIST)
+                    }
+                )
+            }
+
+            composable(
+                route = Routes.RECENT_RECORDS_ROUTE,
+                arguments = listOf(
+                    navArgument(Routes.RECENT_RECORD_TYPE_ARG) { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val recordType = backStackEntry.arguments
+                    ?.getString(Routes.RECENT_RECORD_TYPE_ARG)
+                    .toRecentRecordsType()
+                RecentRecordsScreen(
+                    type = recordType,
+                    onBackClick = {
+                        navController.popBackStack()
+                    },
+                    onOpenSearch = {
+                        navController.navigate(Routes.SEARCH)
+                    },
+                    onOpenTransfer = {
+                        navController.navigate(Routes.TRANSFER_LIST)
+                    }
+                )
+            }
+
             // TXT阅读器路由：二级沉浸式页面，不显示底部导航
             composable(
                 route = Routes.TXT_READER_ROUTE,
@@ -174,6 +293,16 @@ private fun NavHostController.navigateTopLevel(route: String) {
         }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+// [语法] 这是 String? 的扩展函数，相当于 Java 静态工具方法 Routes.toRecentRecordsType(value)。
+// [设计] 为什么这样写：路由参数属于导航层字符串，页面只认识 RecentRecordsType，集中转换能避免 UI 到处判断 magic string。
+private fun String?.toRecentRecordsType(): RecentRecordsType {
+    return when (this) {
+        Routes.RECENT_RECORD_TYPE_OPEN -> RecentRecordsType.Open
+        Routes.RECENT_RECORD_TYPE_TRANSFER -> RecentRecordsType.Transfer
+        else -> RecentRecordsType.Transfer
     }
 }
 
