@@ -1,25 +1,34 @@
 package com.example.simple_pan.ui.reader
 
 // [语法] data class 相当于 Java 的 POJO/Bean，适合承载不可变 UI 状态。
-// [设计] 为什么这样写：阅读器页用一个 State 同时表达标题、正文、加载和错误，Compose 只根据 State 渲染，不直接读文件。
+// [设计] 为什么这样写：v2 阅读器按真实文本测量结果分页，所以每页不仅保存文本，还保存它在全文中的起止位置，便于字号变化后尽量停留在原阅读位置。
+data class TxtReaderPage(
+    val text: String,
+    val startIndex: Int,
+    val endIndex: Int
+)
+
+// [语法] data class 的默认参数让页面首次进入时可以直接创建空状态。
+// [设计] 为什么这样写：阅读器状态同时承载文件内容、测量分页结果、页码、字号和加载状态；Screen 只根据 State 渲染，不直接读取文件。
 data class TxtReaderState(
     val fileId: String = "",
     val fileName: String = "",
     val content: String = "",
-    // [语法] List<String> 类似 Java 的 List<String>，这里保存已经按固定字数切好的每一页文本。
-    // [设计] 为什么这样写：v1 分页先把全文切成稳定页数组，UI 只展示当前页；后续 v2 改成测量分页时仍可沿用 pages/currentPageIndex 这组状态。
-    val pages: List<String> = emptyList(),
+    val pages: List<TxtReaderPage> = emptyList(),
     val currentPageIndex: Int = 0,
+    val fontSizeSp: Int = TXT_READER_DEFAULT_FONT_SIZE_SP,
     val isLoading: Boolean = true,
-    // [语法] String? 表示可空字符串，相当于 Java 的 @Nullable String；没有错误时用 null。
-    // [设计] 为什么这样写：读取失败需要在正文区域展示错误，成功或加载中则保持 null，避免额外布尔状态互相冲突。
-    val errorMessage: String? = null
+    val isPaginating: Boolean = false,
+    val errorMessage: String? = null,
+    val paginationGeneration: Int = 0,
+    val pendingAnchorIndex: Int = 0
 ) {
-    // [设计] 为什么这样写：当前页文本由 pages 和 currentPageIndex 派生，避免 UI 自己做越界判断。
-    val currentPageText: String
-        get() = pages.getOrNull(currentPageIndex).orEmpty()
+    val currentPage: TxtReaderPage?
+        get() = pages.getOrNull(currentPageIndex)
 
-    // [设计] 为什么这样写：页数相关展示集中在 State 内，Composable 只关心能否翻页和当前页码。
+    val currentPageText: String
+        get() = currentPage?.text.orEmpty()
+
     val pageCount: Int
         get() = pages.size
 
@@ -31,23 +40,39 @@ data class TxtReaderState(
 
     val canGoNext: Boolean
         get() = currentPageIndex < pages.lastIndex
+
+    val canDecreaseFontSize: Boolean
+        get() = fontSizeSp > TXT_READER_MIN_FONT_SIZE_SP
+
+    val canIncreaseFontSize: Boolean
+        get() = fontSizeSp < TXT_READER_MAX_FONT_SIZE_SP
+
+    val readingPercent: Int
+        get() = if (pageCount == 0) 0 else ((currentPageNumber * 100f) / pageCount).toInt().coerceIn(0, 100)
 }
 
-// [语法] sealed interface 表示受限事件类型，类似 Java 里固定子类集合的抽象父类型。
-// [设计] 为什么这样写：阅读器用户动作统一收敛成 Intent，后续分页、滑动翻页可以继续添加事件，不把逻辑散在 Composable 中。
+// [语法] sealed interface 表示受限事件类型，类似 Java 中固定子类型集合的抽象父类型。
+// [设计] 为什么这样写：阅读器所有用户动作统一收敛成 Intent，按钮、滑动、字号调整和测量分页都走同一入口，方便排查状态变化。
 sealed interface TxtReaderIntent {
-    // [语法] data class 用来携带读取目标参数，相当于 Java 里一个只读事件对象。
-    // [设计] 为什么这样写：fileId 用于真正读取文件，fallbackFileName 用于读取期间先展示标题，提升页面进入时的稳定感。
     data class LoadFile(
         val fileId: String,
         val fallbackFileName: String
     ) : TxtReaderIntent
 
-    // [语法] data object 是 Kotlin 单例事件，类似 Java enum 里的一个固定动作值。
-    // [设计] 为什么这样写：上一页没有额外参数，ViewModel 根据当前页状态自行判断边界，UI 不直接改 currentPageIndex。
     data object PreviousPage : TxtReaderIntent
 
-    // [语法] data object 是 Kotlin 单例事件，适合表达无参数的下一页动作。
-    // [设计] 为什么这样写：下一页边界统一放在 ViewModel，后续接入左右滑也能复用同一个 Intent。
     data object NextPage : TxtReaderIntent
+
+    data class JumpToPage(val pageIndex: Int) : TxtReaderIntent
+
+    data class ChangeFontSize(val deltaSp: Int) : TxtReaderIntent
+
+    data class ApplyMeasuredPages(
+        val generation: Int,
+        val pages: List<TxtReaderPage>
+    ) : TxtReaderIntent
 }
+
+const val TXT_READER_MIN_FONT_SIZE_SP = 15
+const val TXT_READER_DEFAULT_FONT_SIZE_SP = 18
+const val TXT_READER_MAX_FONT_SIZE_SP = 26

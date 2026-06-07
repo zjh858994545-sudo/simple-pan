@@ -1,8 +1,11 @@
 package com.example.simple_pan.ui.reader
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,28 +13,43 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
-// [设计] 为什么这样写：阅读器页面只连接路由参数和 ViewModel State，真正的磁盘读取交给 UseCase，页面本身保持纯展示。
+// [设计] 为什么这样写：阅读器页面只连接路由参数、ViewModel State 和测量分页 UI；磁盘读取仍交给 UseCase，真实分页则依赖 Compose 文本测量。
 @Composable
 fun TxtReaderScreen(
     fileId: String,
@@ -39,11 +57,8 @@ fun TxtReaderScreen(
     onBackClick: () -> Unit,
     viewModel: TxtReaderViewModel = hiltViewModel()
 ) {
-    // [语法] by 是 Kotlin 委托语法，这里把 State<TxtReaderState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
-    // [设计] 为什么这样写：阅读器内容来自异步读取结果，collectAsStateWithLifecycle 能随页面生命周期自动收集，避免后台页面继续读取状态。
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // [语法] LaunchedEffect 会在参数变化时启动协程，类似 Java 里监听参数变化后触发一次异步任务。
-    // [设计] 为什么这样写：进入同一个阅读器 Composable 时只按 fileId/fileName 触发读取，避免每次重组都重新读磁盘。
+
     LaunchedEffect(fileId, fileName) {
         viewModel.onIntent(
             TxtReaderIntent.LoadFile(
@@ -53,147 +68,345 @@ fun TxtReaderScreen(
         )
     }
 
-    val displayName = state.fileName.ifBlank { fileName.ifBlank { fileId } }
+    TxtReaderContent(
+        state = state,
+        fallbackTitle = fileName.ifBlank { fileId },
+        onBackClick = onBackClick,
+        onRetry = {
+            viewModel.onIntent(
+                TxtReaderIntent.LoadFile(
+                    fileId = fileId,
+                    fallbackFileName = fileName
+                )
+            )
+        },
+        onPreviousPage = {
+            viewModel.onIntent(TxtReaderIntent.PreviousPage)
+        },
+        onNextPage = {
+            viewModel.onIntent(TxtReaderIntent.NextPage)
+        },
+        onJumpToPage = { pageIndex ->
+            viewModel.onIntent(TxtReaderIntent.JumpToPage(pageIndex))
+        },
+        onChangeFontSize = { deltaSp ->
+            viewModel.onIntent(TxtReaderIntent.ChangeFontSize(deltaSp))
+        },
+        onMeasuredPages = { generation, pages ->
+            viewModel.onIntent(
+                TxtReaderIntent.ApplyMeasuredPages(
+                    generation = generation,
+                    pages = pages
+                )
+            )
+        }
+    )
+}
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+@Composable
+private fun TxtReaderContent(
+    state: TxtReaderState,
+    fallbackTitle: String,
+    onBackClick: () -> Unit,
+    onRetry: () -> Unit,
+    onPreviousPage: () -> Unit,
+    onNextPage: () -> Unit,
+    onJumpToPage: (Int) -> Unit,
+    onChangeFontSize: (Int) -> Unit,
+    onMeasuredPages: (generation: Int, pages: List<TxtReaderPage>) -> Unit
+) {
+    val title = state.fileName.ifBlank { fallbackTitle }
+    val readerTextStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontSize = state.fontSizeSp.sp,
+        lineHeight = (state.fontSizeSp * 1.72f).sp,
+        color = ReaderTextColor
+    )
+    var areReadingControlsVisible by remember { mutableStateOf(false) }
+    val canShowReadingControls = state.pageCount > 0 &&
+        !state.isLoading &&
+        !state.isPaginating &&
+        state.errorMessage == null
+
+    LaunchedEffect(canShowReadingControls) {
+        if (!canShowReadingControls) {
+            areReadingControlsVisible = false
+        }
+    }
+
+    // [设计] 底部控件只在用户需要时出现，自动隐藏后正文区域保持完整，阅读时更接近沉浸模式。
+    LaunchedEffect(
+        areReadingControlsVisible,
+        state.currentPageIndex,
+        state.fontSizeSp
+    ) {
+        if (areReadingControlsVisible && canShowReadingControls) {
+            delay(TXT_READER_CONTROLS_AUTO_HIDE_MS)
+            areReadingControlsVisible = false
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = ReaderBackgroundColor
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
             TxtReaderHeader(
-                title = displayName,
-                onBackClick = onBackClick
-            )
-            HorizontalDivider()
-            TxtReaderBody(
-                modifier = Modifier.weight(1f),
+                title = title,
                 state = state,
-                onRetry = {
-                    viewModel.onIntent(
-                        TxtReaderIntent.LoadFile(
-                            fileId = fileId,
-                            fallbackFileName = fileName
+                onBackClick = onBackClick,
+                onDecreaseFont = { onChangeFontSize(-1) },
+                onIncreaseFont = { onChangeFontSize(1) }
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(modifier = Modifier.weight(1f)) {
+                TxtReaderPageFrame(
+                    modifier = Modifier.fillMaxSize(),
+                    state = state,
+                    textStyle = readerTextStyle,
+                    onRetry = onRetry,
+                    onPreviousPage = onPreviousPage,
+                    onNextPage = onNextPage,
+                    onToggleControls = {
+                        if (canShowReadingControls) {
+                            areReadingControlsVisible = !areReadingControlsVisible
+                        }
+                    },
+                    onMeasuredPages = onMeasuredPages
+                )
+                if (areReadingControlsVisible && canShowReadingControls) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        color = ReaderPaperColor.copy(alpha = 0.96f),
+                        shape = RoundedCornerShape(18.dp),
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, ReaderBorderColor)
+                    ) {
+                        TxtReaderBottomBar(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            state = state,
+                            onPreviousPage = onPreviousPage,
+                            onNextPage = onNextPage,
+                            onJumpToPage = onJumpToPage
                         )
-                    )
-                },
-                onPreviousPage = {
-                    viewModel.onIntent(TxtReaderIntent.PreviousPage)
-                },
-                onNextPage = {
-                    viewModel.onIntent(TxtReaderIntent.NextPage)
+                    }
                 }
-            )
-            HorizontalDivider()
-            TxtReaderPagerBar(
-                state = state,
-                onPreviousPage = {
-                    viewModel.onIntent(TxtReaderIntent.PreviousPage)
-                },
-                onNextPage = {
-                    viewModel.onIntent(TxtReaderIntent.NextPage)
-                }
-            )
+            }
         }
     }
 }
 
-// [设计] 为什么这样写：阅读器需要自己的返回入口，因为二级页面隐藏底部 Tab；标题先使用路由传入的文件名，后续读库后可替换成最新名称。
 @Composable
 private fun TxtReaderHeader(
     title: String,
-    onBackClick: () -> Unit
+    state: TxtReaderState,
+    onBackClick: () -> Unit,
+    onDecreaseFont: () -> Unit,
+    onIncreaseFont: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp),
+            .height(52.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         TextButton(onClick = onBackClick) {
-            Text(text = "返回")
+            Text(
+                text = "<",
+                color = ReaderTextColor,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black
+            )
         }
-        Text(
-            modifier = Modifier.weight(1f),
-            text = title,
-            maxLines = 1,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = ReaderTextColor,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black
+            )
+            Text(
+                text = if (state.pageCount == 0) {
+                    "文档阅读器"
+                } else {
+                    "第 ${state.currentPageNumber} 页，共 ${state.pageCount} 页 · ${state.readingPercent}%"
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = ReaderSecondaryTextColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        ReaderRoundTextButton(
+            text = "A-",
+            enabled = state.canDecreaseFontSize && !state.isLoading,
+            onClick = onDecreaseFont
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        ReaderRoundTextButton(
+            text = "A+",
+            enabled = state.canIncreaseFontSize && !state.isLoading,
+            onClick = onIncreaseFont
         )
     }
 }
 
-// [设计] 为什么这样写：正文区域统一承载加载、错误、空文件和内容状态，底部分页骨架不需要关心文件读取细节。
 @Composable
-private fun TxtReaderBody(
-    modifier: Modifier = Modifier,
+private fun ReaderRoundTextButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.size(42.dp),
+        color = if (enabled) ReaderPaperColor else ReaderDisabledColor,
+        contentColor = if (enabled) ReaderTextColor else ReaderSecondaryTextColor,
+        shape = CircleShape,
+        border = BorderStroke(1.dp, ReaderBorderColor),
+        onClick = onClick,
+        enabled = enabled
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black
+            )
+        }
+    }
+}
+
+@Composable
+private fun TxtReaderPageFrame(
+    modifier: Modifier,
     state: TxtReaderState,
+    textStyle: TextStyle,
     onRetry: () -> Unit,
     onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit
+    onNextPage: () -> Unit,
+    onToggleControls: () -> Unit,
+    onMeasuredPages: (generation: Int, pages: List<TxtReaderPage>) -> Unit
 ) {
-    // [语法] with(...) 是 Kotlin 作用域函数，类似 Java 中把同一个对象作为上下文连续调用方法。
-    // [设计] 为什么这样写：Compose 手势回调里拿到的是像素距离，先把 dp 阈值转换成 px，滑动判断才不会受屏幕密度影响。
-    val swipeThresholdPx = with(LocalDensity.current) { TXT_READER_SWIPE_THRESHOLD_DP.toPx() }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp)
-            .pointerInput(state.currentPageIndex, state.pageCount) {
-                var totalHorizontalDrag = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        totalHorizontalDrag = 0f
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        totalHorizontalDrag += dragAmount
-                    },
-                    onDragEnd = {
-                        // [设计] 为什么这样写：按需求约定左滑返回上一页、右滑进入下一页；边界仍交给 State 控制，首尾页不会越界。
-                        if (totalHorizontalDrag <= -swipeThresholdPx && state.canGoPrevious) {
-                            onPreviousPage()
-                        } else if (totalHorizontalDrag >= swipeThresholdPx && state.canGoNext) {
-                            onNextPage()
-                        }
-                    },
-                    onDragCancel = {
-                        totalHorizontalDrag = 0f
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { TXT_READER_SWIPE_THRESHOLD_DP.toPx() }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = ReaderPaperColor,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, ReaderBorderColor)
     ) {
-        when {
-            state.isLoading -> TxtReaderLoading()
-            state.errorMessage != null -> TxtReaderError(
-                message = state.errorMessage,
-                onRetry = onRetry
-            )
-            state.pages.isEmpty() -> TxtReaderEmpty()
-            else -> TxtReaderContent(content = state.currentPageText)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 18.dp)
+        ) {
+            val pageWidthPx = with(density) { maxWidth.roundToPx() }
+            val pageHeightPx = with(density) { maxHeight.roundToPx() }
+            val generation = state.paginationGeneration
+
+            LaunchedEffect(
+                state.content,
+                state.fontSizeSp,
+                pageWidthPx,
+                pageHeightPx,
+                generation
+            ) {
+                if (
+                    state.content.isNotEmpty() &&
+                    pageWidthPx > 0 &&
+                    pageHeightPx > 0 &&
+                    state.errorMessage == null
+                ) {
+                    val pages = paginateMeasuredText(
+                        content = state.content,
+                        textMeasurer = textMeasurer,
+                        textStyle = textStyle,
+                        maxWidthPx = pageWidthPx,
+                        maxHeightPx = pageHeightPx
+                    )
+                    onMeasuredPages(generation, pages)
+                }
+            }
+
+            val bodyModifier = Modifier
+                .fillMaxSize()
+                .pointerInput(state.currentPageIndex, state.pageCount) {
+                    var totalHorizontalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            totalHorizontalDrag = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            totalHorizontalDrag += dragAmount
+                        },
+                        onDragEnd = {
+                            if (totalHorizontalDrag <= -swipeThresholdPx && state.canGoNext) {
+                                onNextPage()
+                            } else if (totalHorizontalDrag >= swipeThresholdPx && state.canGoPrevious) {
+                                onPreviousPage()
+                            }
+                        },
+                        onDragCancel = {
+                            totalHorizontalDrag = 0f
+                        }
+                    )
+                }
+                .pointerInput(state.pageCount) {
+                    // [设计] 轻点正文显示或隐藏底部控件；滑动翻页由上一层手势继续负责。
+                    detectTapGestures(
+                        onTap = {
+                            onToggleControls()
+                        }
+                    )
+                }
+
+            Box(
+                modifier = bodyModifier,
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    state.isLoading -> ReaderLoading(text = "正在读取 TXT 内容")
+                    state.errorMessage != null -> ReaderError(
+                        message = state.errorMessage,
+                        onRetry = onRetry
+                    )
+                    state.content.isEmpty() -> ReaderEmpty()
+                    state.isPaginating || state.pages.isEmpty() -> ReaderLoading(text = "正在排版文档")
+                    else -> ReaderPageText(
+                        text = state.currentPageText,
+                        style = textStyle
+                    )
+                }
+            }
         }
     }
 }
 
-// [设计] 为什么这样写：加载状态放在正文中心，用户能确认已经进入阅读器，只是在等待磁盘读取完成。
 @Composable
-private fun TxtReaderLoading() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        CircularProgressIndicator()
+private fun ReaderLoading(text: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        CircularProgressIndicator(color = ReaderTextColor)
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "正在读取 TXT 内容",
-            style = MaterialTheme.typography.bodyLarge
+            text = text,
+            color = ReaderSecondaryTextColor,
+            style = MaterialTheme.typography.bodyMedium
         )
     }
 }
 
-// [设计] 为什么这样写：读取错误不退出页面，提供重试入口，方便用户在文件恢复或重新上传后立刻验证。
 @Composable
-private fun TxtReaderError(
+private fun ReaderError(
     message: String,
     onRetry: () -> Unit
 ) {
@@ -213,64 +426,206 @@ private fun TxtReaderError(
     }
 }
 
-// [设计] 为什么这样写：空 TXT 是合法文件，必须和读取失败区分开，避免用户误以为文件损坏。
 @Composable
-private fun TxtReaderEmpty() {
+private fun ReaderEmpty() {
     Text(
         text = "TXT 文件为空",
         style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = ReaderSecondaryTextColor
     )
 }
 
-// [设计] 为什么这样写：正文只展示当前页文本；v1 固定字数分页可能在不同屏幕上仍有滚动，正好保留为后续 v2 测量分页的对比点。
 @Composable
-private fun TxtReaderContent(content: String) {
+private fun ReaderPageText(
+    text: String,
+    style: TextStyle
+) {
     Text(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        text = content,
-        style = MaterialTheme.typography.bodyLarge
+        modifier = Modifier.fillMaxSize(),
+        text = text,
+        style = style,
+        overflow = TextOverflow.Clip
     )
 }
 
-// [设计] 为什么这样写：分页控制固定在底部并完全由 State 驱动，用户点击按钮只发 Intent，不直接修改页码。
 @Composable
-private fun TxtReaderPagerBar(
+private fun TxtReaderBottomBar(
+    modifier: Modifier = Modifier,
     state: TxtReaderState,
     onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit
+    onNextPage: () -> Unit,
+    onJumpToPage: (Int) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Button(
-            enabled = state.canGoPrevious,
-            onClick = onPreviousPage
-        ) {
-            Text(text = "上一页")
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (state.pageCount > 1) {
+            Slider(
+                value = state.currentPageIndex.toFloat(),
+                onValueChange = { value ->
+                    onJumpToPage(value.roundToInt())
+                },
+                valueRange = 0f..state.pages.lastIndex.toFloat()
+            )
+        } else {
+            HorizontalDivider(color = ReaderBorderColor)
+            Spacer(modifier = Modifier.height(12.dp))
         }
-        Text(
-            text = state.toPageIndicatorText(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Button(
-            enabled = state.canGoNext,
-            onClick = onNextPage
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "下一页")
+            Button(
+                enabled = state.canGoPrevious,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ReaderTextColor,
+                    contentColor = ReaderPaperColor,
+                    disabledContainerColor = ReaderDisabledColor,
+                    disabledContentColor = ReaderSecondaryTextColor
+                ),
+                onClick = onPreviousPage
+            ) {
+                Text(text = "上一页")
+            }
+            Text(
+                text = state.toPageIndicatorText(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = ReaderTextColor,
+                fontWeight = FontWeight.Black
+            )
+            Button(
+                enabled = state.canGoNext,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ReaderTextColor,
+                    contentColor = ReaderPaperColor,
+                    disabledContainerColor = ReaderDisabledColor,
+                    disabledContentColor = ReaderSecondaryTextColor
+                ),
+                onClick = onNextPage
+            ) {
+                Text(text = "下一页")
+            }
         }
     }
 }
 
-// [语法] 这是 TxtReaderState 的扩展函数，相当于 Java 静态工具方法 ReaderPageIndicator.toText(state)。
-// [设计] 为什么这样写：页码文案集中处理，加载、错误、空文件时不会显示误导性的 1 / 1。
+private fun paginateMeasuredText(
+    content: String,
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int,
+    maxHeightPx: Int
+): List<TxtReaderPage> {
+    if (content.isEmpty()) {
+        return emptyList()
+    }
+
+    val pages = mutableListOf<TxtReaderPage>()
+    var startIndex = 0
+    while (startIndex < content.length) {
+        val measuredEnd = findMeasuredPageEnd(
+            content = content,
+            startIndex = startIndex,
+            textMeasurer = textMeasurer,
+            textStyle = textStyle,
+            maxWidthPx = maxWidthPx,
+            maxHeightPx = maxHeightPx
+        )
+        val endIndex = refinePageEnd(
+            content = content,
+            startIndex = startIndex,
+            measuredEnd = measuredEnd
+        )
+        pages += TxtReaderPage(
+            text = content.substring(startIndex, endIndex),
+            startIndex = startIndex,
+            endIndex = endIndex
+        )
+        startIndex = endIndex
+    }
+    return pages
+}
+
+private fun findMeasuredPageEnd(
+    content: String,
+    startIndex: Int,
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int,
+    maxHeightPx: Int
+): Int {
+    fun fits(endIndex: Int): Boolean {
+        val layout = textMeasurer.measure(
+            text = AnnotatedString(content.substring(startIndex, endIndex)),
+            style = textStyle,
+            overflow = TextOverflow.Clip,
+            constraints = Constraints(
+                maxWidth = maxWidthPx,
+                maxHeight = maxHeightPx
+            )
+        )
+        return !layout.hasVisualOverflow && layout.size.height <= maxHeightPx
+    }
+
+    var bestEnd = (startIndex + 1).coerceAtMost(content.length)
+    var probeEnd = (startIndex + INITIAL_PAGE_PROBE_CHARS).coerceAtMost(content.length)
+    while (probeEnd <= content.length && fits(probeEnd)) {
+        bestEnd = probeEnd
+        if (probeEnd == content.length) {
+            return content.length
+        }
+        val currentSpan = (probeEnd - startIndex).coerceAtLeast(1)
+        probeEnd = (startIndex + currentSpan * 2).coerceAtMost(content.length)
+    }
+
+    var low = (bestEnd + 1).coerceAtMost(content.length)
+    var high = probeEnd
+    while (low <= high) {
+        val mid = (low + high) / 2
+        if (fits(mid)) {
+            bestEnd = mid
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return bestEnd
+}
+
+private fun refinePageEnd(
+    content: String,
+    startIndex: Int,
+    measuredEnd: Int
+): Int {
+    if (measuredEnd >= content.length) {
+        return content.length
+    }
+    val pageLength = measuredEnd - startIndex
+    if (pageLength < MIN_PAGE_CHARS_FOR_BOUNDARY) {
+        return measuredEnd
+    }
+
+    val searchStart = startIndex + (pageLength * PAGE_BOUNDARY_SEARCH_RATIO).toInt()
+    for (index in measuredEnd - 1 downTo searchStart) {
+        if (content[index].isNaturalPageBoundary()) {
+            return index + 1
+        }
+    }
+    return measuredEnd
+}
+
+private fun Char.isNaturalPageBoundary(): Boolean {
+    return this == '\n' ||
+        this == '\r' ||
+        this == '。' ||
+        this == '！' ||
+        this == '？' ||
+        this == '；' ||
+        this == '.' ||
+        this == '!' ||
+        this == '?' ||
+        this == ';'
+}
+
 private fun TxtReaderState.toPageIndicatorText(): String {
     return if (pageCount == 0) {
         "- / -"
@@ -279,5 +634,15 @@ private fun TxtReaderState.toPageIndicatorText(): String {
     }
 }
 
-// [设计] 为什么这样写：滑动阈值用 dp 而不是裸像素，保证不同密度设备上触发距离接近；v1 先固定阈值，后续可按阅读器手势体验微调。
+private val ReaderBackgroundColor = androidx.compose.ui.graphics.Color(0xFFF4F0E8)
+private val ReaderPaperColor = androidx.compose.ui.graphics.Color(0xFFFFFCF5)
+private val ReaderTextColor = androidx.compose.ui.graphics.Color(0xFF1F1B16)
+private val ReaderSecondaryTextColor = androidx.compose.ui.graphics.Color(0xFF7C7468)
+private val ReaderBorderColor = androidx.compose.ui.graphics.Color(0xFFE3D9C9)
+private val ReaderDisabledColor = androidx.compose.ui.graphics.Color(0xFFE8E0D5)
+
+private const val INITIAL_PAGE_PROBE_CHARS = 700
+private const val MIN_PAGE_CHARS_FOR_BOUNDARY = 120
+private const val PAGE_BOUNDARY_SEARCH_RATIO = 0.72f
 private val TXT_READER_SWIPE_THRESHOLD_DP = 72.dp
+private const val TXT_READER_CONTROLS_AUTO_HIDE_MS = 3_500L
