@@ -189,6 +189,50 @@ class FileRepositoryImpl @Inject constructor(
         }
     }
 
+    // [语法] suspend fun + withContext 表示协程函数切到 IO 线程执行，类似 Java 把数据库任务提交到 Executor。
+    // [设计] 为什么这样写：创建文件夹只写 file_entity，不写 transfer_history；它不是上传/转存记录，但必须进入同一张文件表，列表、搜索、移动目标才能自动识别。
+    override suspend fun createFolder(
+        parentId: String?,
+        name: String,
+        createdAt: Long
+    ): CloudFile = withContext(ioDispatcher) {
+        val fileId = UUID.randomUUID().toString()
+        val entity = FileEntity(
+            fileId = fileId,
+            parentId = parentId,
+            name = name,
+            type = FileEntity.TYPE_FOLDER,
+            mimeType = null,
+            sizeBytes = 0L,
+            localPath = null,
+            originalUri = null,
+            createdAt = createdAt,
+            updatedAt = createdAt,
+            openedAt = null,
+            transferredAt = null,
+            isDeleted = false,
+            isPinned = false,
+            source = FileEntity.SOURCE_CREATED
+        )
+
+        // [语法] withTransaction 会在代码块正常结束时提交，抛异常时回滚，类似 Java 手写 beginTransaction/commit/rollback。
+        // [设计] 为什么这样写：目标目录校验、同名兜底校验和插入要作为一个整体，避免并发操作时写出非法或重复目录。
+        database.withTransaction {
+            require(isValidUploadTarget(parentId)) {
+                "目标文件夹不存在或已被删除"
+            }
+            require(fileDao.countActiveNameInFolder(parentId, name, excludeFileId = null) == 0) {
+                "当前目录已存在同名文件或文件夹"
+            }
+            fileDao.insert(entity)
+        }
+
+        val savedFile = fileDao.findActiveFile(fileId)
+        requireNotNull(savedFile) {
+            "新建文件夹后无法读取：$fileId"
+        }.toDomain()
+    }
+
     // [语法] suspend fun + withContext 表示协程函数切到指定线程执行，类似 Java 把数据库任务提交到 IO Executor。
     // [设计] 为什么这样写：上传成功后的三个数据库动作必须原子完成，避免文件列表出现了文件但首页最近转存没有记录。
     override suspend fun saveUploadedFile(record: UploadFileRecord, transferredAt: Long): CloudFile = withContext(ioDispatcher) {

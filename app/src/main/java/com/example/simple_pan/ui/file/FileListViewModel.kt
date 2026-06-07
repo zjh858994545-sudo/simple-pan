@@ -73,6 +73,25 @@ class FileListViewModel @Inject constructor(
             is FileListIntent.UploadPickedFile -> {
                 uploadPickedFile(intent.uriString)
             }
+            FileListIntent.OpenCreateFolderDialog -> {
+                openCreateFolderDialog()
+            }
+            FileListIntent.DismissCreateFolderDialog -> {
+                dismissCreateFolderDialog()
+            }
+            is FileListIntent.ChangeCreateFolderName -> {
+                _state.update { currentState ->
+                    currentState.copy(
+                        createFolderDialog = currentState.createFolderDialog.copy(
+                            folderName = intent.folderName,
+                            errorMessage = null
+                        )
+                    )
+                }
+            }
+            FileListIntent.ConfirmCreateFolder -> {
+                confirmCreateFolder()
+            }
             is FileListIntent.OpenFile -> {
                 openFile(intent.fileId)
             }
@@ -463,6 +482,99 @@ class FileListViewModel @Inject constructor(
         _effect.emit(FileListEffect.ShowMessage(message))
     }
 
+    // [设计] 为什么这样写：打开弹窗时只初始化 UI 临时状态，不做数据库动作；用户点“创建”后才进入校验和写库流程。
+    private fun openCreateFolderDialog() {
+        if (_state.value.createFolderDialog.isSubmitting) {
+            return
+        }
+        _state.update { currentState ->
+            currentState.copy(
+                createFolderDialog = CreateFolderDialogState(
+                    isVisible = true,
+                    folderName = DEFAULT_NEW_FOLDER_NAME
+                )
+            )
+        }
+    }
+
+    // [设计] 为什么这样写：提交中不允许关闭弹窗，避免用户以为取消了，但后台数据库已经创建成功。
+    private fun dismissCreateFolderDialog() {
+        if (_state.value.createFolderDialog.isSubmitting) {
+            return
+        }
+        _state.update { currentState ->
+            currentState.copy(createFolderDialog = CreateFolderDialogState())
+        }
+    }
+
+    // [设计] 为什么这样写：创建文件夹的业务规则和 UI 输入分开；列表刷新仍依赖 Room Flow，不在成功后手动往 state.files 里塞一项。
+    private fun confirmCreateFolder() {
+        val currentState = _state.value
+        val dialog = currentState.createFolderDialog
+        if (!dialog.isVisible || dialog.isSubmitting) {
+            return
+        }
+
+        val folderName = dialog.folderName.trim()
+        if (folderName.isBlank()) {
+            showCreateFolderError("文件夹名称不能为空")
+            return
+        }
+        if (folderName.hasPathSeparator()) {
+            showCreateFolderError("文件夹名称不能包含 / 或 \\")
+            return
+        }
+
+        val parentId = currentState.currentFolderId
+        _state.update { state ->
+            state.copy(
+                createFolderDialog = state.createFolderDialog.copy(
+                    folderName = folderName,
+                    errorMessage = null,
+                    isSubmitting = true
+                )
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val hasDuplicateName = fileRepository.hasActiveNameInFolder(
+                    parentId = parentId,
+                    name = folderName,
+                    excludeFileId = null
+                )
+                if (hasDuplicateName) {
+                    showCreateFolderError("当前目录已存在同名文件或文件夹")
+                    return@launch
+                }
+
+                val createdFolder = fileRepository.createFolder(
+                    parentId = parentId,
+                    name = folderName,
+                    createdAt = System.currentTimeMillis()
+                )
+                _state.update { state ->
+                    state.copy(createFolderDialog = CreateFolderDialogState())
+                }
+                _effect.emit(FileListEffect.ShowMessage("已新建文件夹：${createdFolder.name}"))
+            } catch (throwable: Throwable) {
+                showCreateFolderError(throwable.toCreateFolderMessage())
+            }
+        }
+    }
+
+    // [设计] 为什么这样写：创建失败只展示在弹窗里，不替换文件列表页面，用户可以直接改名后再次提交。
+    private fun showCreateFolderError(message: String) {
+        _state.update { currentState ->
+            currentState.copy(
+                createFolderDialog = currentState.createFolderDialog.copy(
+                    errorMessage = message,
+                    isSubmitting = false
+                )
+            )
+        }
+    }
+
     // [设计] 为什么这样写：确认重命名包含校验、查库和写库，集中在 ViewModel 能保持 UI 弹窗足够薄，也让 MVI 状态变化可追踪。
     private fun confirmRename() {
         val dialog = _state.value.renameDialog
@@ -842,6 +954,23 @@ class FileListViewModel @Inject constructor(
         }
     }
 
+    // [语法] 这是 String 的扩展函数，相当于 Java 静态工具方法 FileNames.hasPathSeparator(name)。
+    // [设计] 为什么这样写：本地网盘后续会用 / 表达目录路径，文件夹名称里如果允许 / 或 \，会让分享快照、移动路径和展示路径产生歧义。
+    private fun String.hasPathSeparator(): Boolean {
+        return contains("/") || contains("\\")
+    }
+
+    // [语法] 这是 Throwable 的扩展函数，相当于 Java 静态工具方法 CreateFolderErrors.toMessage(throwable)。
+    // [设计] 为什么这样写：Repository 兜底校验失败或数据库异常都统一转成创建场景文案，避免用户看到不带上下文的底层错误。
+    private fun Throwable.toCreateFolderMessage(): String {
+        val detail = message
+        return if (detail == null || detail.isBlank()) {
+            "新建文件夹失败，请重试"
+        } else {
+            "新建文件夹失败：$detail"
+        }
+    }
+
     // [语法] 这是 UploadSizeCheckResult 的扩展函数，相当于 Java 静态工具方法 UploadErrors.toMessage(result)。
     // [设计] 为什么这样写：上传大小错误文案集中转换，后续 UI 改成 Snackbar 时可以直接复用这套业务文案。
     private fun UploadSizeCheckResult.toUploadErrorMessage(): String {
@@ -1048,5 +1177,11 @@ class FileListViewModel @Inject constructor(
         } else {
             "文件列表加载失败：$detail"
         }
+    }
+
+    // [语法] companion object 相当于 Java 的 static 常量区。
+    // [设计] 为什么这样写：默认名称只属于文件列表页创建文件夹场景，集中成常量比散落字符串更容易调整。
+    companion object {
+        private const val DEFAULT_NEW_FOLDER_NAME = "新建文件夹"
     }
 }

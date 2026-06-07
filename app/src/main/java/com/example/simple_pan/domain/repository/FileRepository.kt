@@ -50,6 +50,10 @@ interface FileRepository {
     // [设计] 为什么这样写：删除文件夹时必须递归软删除子文件，统一放在 Repository 事务中，避免 UI 层遗漏子目录。
     suspend fun deleteFiles(fileIds: List<String>, deletedAt: Long): Int
 
+    // [语法] suspend fun 是协程函数，适合包装 Room 写入这种耗时动作。
+    // [设计] 为什么这样写：新建文件夹也是文件表写入能力，放在 Repository 接口里，ViewModel 不直接认识 FileEntity 或 DAO。
+    suspend fun createFolder(parentId: String?, name: String, createdAt: Long): CloudFile
+
     // [语法] suspend fun 是协程函数，类似 Java Future/回调，但调用方可以用顺序代码写异步流程。
     // [设计] 为什么这样写：上传成功后必须同时写文件表和转存历史，Repository 用事务保证首页最近转存和文件列表不会出现半成功状态。
     suspend fun saveUploadedFile(record: UploadFileRecord, transferredAt: Long): CloudFile

@@ -65,6 +65,15 @@ data class MoveDialogState(
     val isSubmitting: Boolean = false
 )
 
+// [语法] data class 相当于 Java 的 POJO/Bean，用一组字段描述“新建文件夹”弹窗当前输入和提交状态。
+// [设计] 为什么这样写：弹窗输入不能放在 Composable 局部变量里，否则旋转、重组或错误提示时状态容易丢；统一进入 ViewModel State，能保持 MVI 链路完整。
+data class CreateFolderDialogState(
+    val isVisible: Boolean = false,
+    val folderName: String = "",
+    val errorMessage: String? = null,
+    val isSubmitting: Boolean = false
+)
+
 // [语法] data class 相当于 Java 的 POJO/Bean，Kotlin 会自动生成 equals/hashCode/toString/copy。
 // [设计] 为什么这样写：文件列表页用一个不可变 State 表达 loading、empty、error 和列表数据，Compose 只根据 State 重组，不在 UI 里手动刷新。
 data class FileListState(
@@ -91,6 +100,7 @@ data class FileListState(
     val renameDialog: RenameDialogState = RenameDialogState(),
     val deleteDialog: DeleteDialogState = DeleteDialogState(),
     val moveDialog: MoveDialogState = MoveDialogState(),
+    val createFolderDialog: CreateFolderDialogState = CreateFolderDialogState(),
     val initializedFromMock: Boolean = false
 )
 
@@ -133,6 +143,19 @@ sealed interface FileListIntent {
     // [语法] data class 用来携带 SAF 返回的 Uri 字符串，相当于 Java 事件对象 UploadPickedFile。
     // [设计] 为什么这样写：系统文件选择器属于 UI 能力，但上传业务仍由 ViewModel/UseCase 处理，保持“选择结果 -> Intent -> 状态/业务”的 MVI 链路。
     data class UploadPickedFile(val uriString: String) : FileListIntent
+
+    // [设计] 为什么这样写：上传面板里的“新建文件夹”只负责发起意图，弹窗状态和默认名称由 ViewModel 统一生成。
+    data object OpenCreateFolderDialog : FileListIntent
+
+    // [设计] 为什么这样写：关闭弹窗要清空输入、错误和提交状态，避免下一次打开沿用旧错误文案。
+    data object DismissCreateFolderDialog : FileListIntent
+
+    // [语法] data class 用来携带输入框内容，相当于 Java 事件对象 CreateFolderNameChanged。
+    // [设计] 为什么这样写：文件夹名称输入也走 Intent，ViewModel 可以在用户继续输入时清理错误提示。
+    data class ChangeCreateFolderName(val folderName: String) : FileListIntent
+
+    // [设计] 为什么这样写：确认按钮只表达“用户要创建”，空名、重名和写库逻辑都集中到 ViewModel。
+    data object ConfirmCreateFolder : FileListIntent
 
     // [语法] data class 用于携带参数，相当于 Java 里一个只保存 folderId/folderName 的事件对象。
     // [设计] 为什么这样写：进入文件夹要同时保存 id 和展示名称，ViewModel 可以更新路径栈并重新观察子目录。

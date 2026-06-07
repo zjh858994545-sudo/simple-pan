@@ -62,5 +62,6 @@ data class FileEntity(
         const val SOURCE_MOCK = "mock"
         const val SOURCE_UPLOAD = "upload"
         const val SOURCE_SHARE_SAVE = "share_save"
+        const val SOURCE_CREATED = "created"
     }
 }

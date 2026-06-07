@@ -52,7 +52,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,7 +74,6 @@ import com.example.simple_pan.ui.component.WukongSegmentedTabs
 import com.example.simple_pan.ui.component.WukongTopTab
 import com.example.simple_pan.ui.component.WukongTopTabs
 import java.io.File
-import kotlinx.coroutines.launch
 
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI 内容，数据来源仍然是 Room -> Repository -> ViewModel -> State。
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,7 +92,6 @@ fun FileListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var isUploadSheetVisible by remember { mutableStateOf(false) }
     val uploadSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val coroutineScope = rememberCoroutineScope()
     // [设计] 为什么这样写：系统播放器属于 Android 平台能力，需要由 Screen 层拿到 Context 启动外部 Intent，避免 ViewModel 直接依赖 Activity。
     val context = LocalContext.current
     // [语法] LaunchedEffect 会在 Composable 进入组合时启动协程，并在离开组合时自动取消。
@@ -238,6 +235,15 @@ fun FileListScreen(
             onConfirmMove = {
                 viewModel.onIntent(FileListIntent.ConfirmMove)
             },
+            onDismissCreateFolderDialog = {
+                viewModel.onIntent(FileListIntent.DismissCreateFolderDialog)
+            },
+            onCreateFolderNameChange = { folderName ->
+                viewModel.onIntent(FileListIntent.ChangeCreateFolderName(folderName))
+            },
+            onConfirmCreateFolder = {
+                viewModel.onIntent(FileListIntent.ConfirmCreateFolder)
+            },
             onUploadClick = {
                 isUploadSheetVisible = true
             },
@@ -259,9 +265,7 @@ fun FileListScreen(
             },
             onCreateFolder = {
                 isUploadSheetVisible = false
-                coroutineScope.launch {
-                    snackbarHostState.showSnackbar("新建文件夹功能后续接入")
-                }
+                viewModel.onIntent(FileListIntent.OpenCreateFolderDialog)
             }
         )
     }
@@ -294,6 +298,9 @@ private fun FileListContent(
     onEnterMoveTargetFolder: (CloudFile) -> Unit,
     onBackMoveTargetFolder: () -> Unit,
     onConfirmMove: () -> Unit,
+    onDismissCreateFolderDialog: () -> Unit,
+    onCreateFolderNameChange: (String) -> Unit,
+    onConfirmCreateFolder: () -> Unit,
     onUploadClick: () -> Unit,
     onOpenPan: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -397,6 +404,15 @@ private fun FileListContent(
                         onBackToParent = onBackMoveTargetFolder,
                         onDismiss = onDismissMoveDialog,
                         onConfirm = onConfirmMove
+                    )
+                }
+
+                if (state.createFolderDialog.isVisible) {
+                    CreateFolderDialog(
+                        dialogState = state.createFolderDialog,
+                        onNameChange = onCreateFolderNameChange,
+                        onDismiss = onDismissCreateFolderDialog,
+                        onConfirm = onConfirmCreateFolder
                     )
                 }
             }
@@ -741,6 +757,62 @@ private fun FileManageActionButton(
             fontWeight = FontWeight.SemiBold
         )
     }
+}
+
+// [设计] 为什么这样写：新建文件夹弹窗只收集名称并展示校验结果，真正查重和写库仍回到 ViewModel，保持 UI 层足够薄。
+@Composable
+private fun CreateFolderDialog(
+    dialogState: CreateFolderDialogState,
+    onNameChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {
+            if (!dialogState.isSubmitting) {
+                onDismiss()
+            }
+        },
+        title = {
+            Text(text = "新建文件夹")
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = dialogState.folderName,
+                    onValueChange = onNameChange,
+                    enabled = !dialogState.isSubmitting,
+                    singleLine = true,
+                    isError = dialogState.errorMessage != null,
+                    label = {
+                        Text(text = "文件夹名称")
+                    },
+                    supportingText = {
+                        if (dialogState.errorMessage != null) {
+                            Text(text = dialogState.errorMessage)
+                        }
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onConfirm
+            ) {
+                Text(text = if (dialogState.isSubmitting) "创建中" else "创建")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !dialogState.isSubmitting,
+                onClick = onDismiss
+            ) {
+                Text(text = "取消")
+            }
+        }
+    )
 }
 
 // [设计] 为什么这样写：弹窗只展示和收集输入，不直接访问 Repository；重命名校验和写库统一回到 ViewModel，保持 MVI 数据流清晰。
