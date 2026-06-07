@@ -27,6 +27,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -98,6 +99,18 @@ class FileRepositoryImpl @Inject constructor(
             return@withContext emptyList()
         }
         fileDao.findActiveFiles(fileIds).map { entity -> entity.toDomain() }
+    }
+
+    override fun observeSearchResults(keyword: String): Flow<List<CloudFile>> {
+        val cleanedKeyword = keyword.trim()
+        if (cleanedKeyword.isBlank()) {
+            return flowOf(emptyList())
+        }
+
+        // [语法] map 是 Flow 转换函数，DAO 发射 Entity 列表后，这里持续转换成领域模型列表。
+        // [设计] 为什么这样写：搜索页应该响应 Room 后续变化，Repository 只把“关键词清洗 + Entity 转领域模型”封装起来。
+        return fileDao.observeActiveFilesByName(cleanedKeyword.toSqlLikeEscapedKeyword())
+            .map { entities -> entities.map { entity -> entity.toDomain() } }
     }
 
     // [设计] 为什么这样写：同名检查属于数据访问能力，但是否提示错误、是否保留扩展名由上层业务决定，避免 Repository 绑死 UI 规则。
@@ -607,6 +620,14 @@ class FileRepositoryImpl @Inject constructor(
             baseName = substring(0, dotIndex),
             extension = substring(dotIndex)
         )
+    }
+
+    // [语法] replace 会生成新字符串，不修改原字符串；这里连续替换相当于逐步转义 SQL LIKE 的特殊字符。
+    // [设计] 为什么这样写：用户如果搜索 % 或 _，应该按普通字符搜索，而不是触发 SQL 通配符导致匹配范围异常扩大。
+    private fun String.toSqlLikeEscapedKeyword(): String {
+        return replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
     }
 
     // [语法] companion object 相当于 Java 的 static 常量区。

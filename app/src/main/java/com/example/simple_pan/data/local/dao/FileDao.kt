@@ -41,6 +41,21 @@ interface FileDao {
     @Query("SELECT * FROM file_entity WHERE file_id IN (:fileIds) AND is_deleted = 0")
     suspend fun findActiveFiles(fileIds: List<String>): List<FileEntity>
 
+    // [语法] LIKE 配合 '%' || :keyword || '%' 表示“名称中包含关键词”，ESCAPE '\' 让 Repository 转义后的 %/_ 按普通字符处理。
+    // [设计] 为什么这样写：搜索页需要跨目录搜索所有未删除文件，DAO 只负责返回匹配行，关键词清洗和空输入处理留给 Repository/ViewModel。
+    @Query(
+        """
+        SELECT * FROM file_entity
+        WHERE is_deleted = 0
+          AND name LIKE '%' || :keyword || '%' ESCAPE '\'
+        ORDER BY is_pinned DESC,
+                 CASE WHEN type = 'folder' THEN 0 ELSE 1 END,
+                 updated_at DESC,
+                 name COLLATE NOCASE ASC
+        """
+    )
+    fun observeActiveFilesByName(keyword: String): Flow<List<FileEntity>>
+
     // [设计] 为什么这样写：重命名和上传都需要同目录重名检查，DAO 只返回数量，具体提示文案留给上层。
     @Query(
         """

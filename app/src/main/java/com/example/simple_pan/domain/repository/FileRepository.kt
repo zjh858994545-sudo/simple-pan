@@ -26,6 +26,10 @@ interface FileRepository {
     // [设计] 为什么这样写：管理态通常拿到的是一组选中 id，Repository 提供批量查询可以避免 ViewModel 循环收集 Flow。
     suspend fun findActiveFiles(fileIds: List<String>): List<CloudFile>
 
+    // [语法] Flow<List<CloudFile>> 表示搜索结果会随 Room 数据变化自动刷新，比如上传、重命名、删除后不需要页面手动刷新。
+    // [设计] 为什么这样写：搜索页只关心“关键词 -> 结果列表”，具体 SQL、转义规则和 Entity 转换都留在 Repository/Data 层。
+    fun observeSearchResults(keyword: String): Flow<List<CloudFile>>
+
     // [设计] 为什么这样写：重命名弹窗需要先判断同目录是否重名，把查询能力放在 Repository，UI 不直接碰 Room。
     suspend fun hasActiveNameInFolder(parentId: String?, name: String, excludeFileId: String?): Boolean
 

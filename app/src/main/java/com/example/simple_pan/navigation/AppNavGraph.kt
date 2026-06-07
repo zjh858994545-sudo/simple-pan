@@ -101,6 +101,9 @@ fun AppNavGraph() {
                 PanSearchScreen(
                     onBackClick = {
                         navController.popBackStack()
+                    },
+                    onOpenTxtReader = { fileId, fileName ->
+                        navController.navigate(Routes.txtReader(fileId, fileName))
                     }
                 )
             }
