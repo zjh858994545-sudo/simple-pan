@@ -5,7 +5,6 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.util.AndroidRuntimeException
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +55,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
+import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import java.io.File
 import kotlinx.coroutines.delay
@@ -347,7 +347,7 @@ private fun SearchResultRow(
         ListItem(
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             leadingContent = {
-                SearchFileTypeBadge(fileType = file.type)
+                WukongFileTypeIcon(fileType = file.type)
             },
             headlineContent = {
                 Text(
@@ -375,45 +375,6 @@ private fun SearchResultRow(
             }
         )
         HorizontalDivider(color = Color.Transparent)
-    }
-}
-
-@Composable
-private fun SearchFileTypeBadge(fileType: FileType) {
-    val badge = fileType.toBadgeSpec()
-    Surface(
-        modifier = Modifier.size(50.dp),
-        color = badge.containerColor,
-        contentColor = badge.contentColor,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, badge.contentColor.copy(alpha = 0.14f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = badge.shortLabel,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-        }
-    }
-}
-
-// [语法] data class 自动生成只读属性和 copy/equals，适合承载徽章 UI 需要的一组值。
-// [设计] 为什么这样写：类型到颜色/短文案的映射集中在一处，后续换成真实图标时只改这里和徽章组件。
-private data class SearchBadgeSpec(
-    val shortLabel: String,
-    val containerColor: Color,
-    val contentColor: Color
-)
-
-private fun FileType.toBadgeSpec(): SearchBadgeSpec {
-    return when (this) {
-        FileType.Folder -> SearchBadgeSpec("夹", Color(0xFFE7EEFF), Color(0xFF1E3A8A))
-        FileType.Video -> SearchBadgeSpec("视", Color(0xFFFFDDD7), Color(0xFF9F1239))
-        FileType.Txt -> SearchBadgeSpec("文", Color(0xFFD8F3EF), Color(0xFF115E59))
-        FileType.Image -> SearchBadgeSpec("图", Color(0xFFEAF0F8), Color(0xFF475569))
-        FileType.Audio -> SearchBadgeSpec("音", Color(0xFFE8D9FF), Color(0xFF4C1D95))
-        FileType.Other -> SearchBadgeSpec("其", Color(0xFFEAF0F8), Color(0xFF475569))
     }
 }
 

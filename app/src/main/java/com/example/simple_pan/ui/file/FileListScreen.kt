@@ -10,7 +10,6 @@ import android.content.Intent
 import android.util.AndroidRuntimeException
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +30,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
@@ -69,6 +67,7 @@ import com.example.simple_pan.deeplink.ShareLinkBuilder
 import com.example.simple_pan.domain.model.CloudFile
 import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.ui.component.WukongEmptyState
+import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongPlusButton
 import com.example.simple_pan.ui.component.WukongSegmentedTabs
@@ -479,10 +478,10 @@ private fun WukongUploadSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 28.dp, top = 26.dp, end = 28.dp, bottom = 18.dp)
+                .padding(start = 28.dp, top = 28.dp, end = 28.dp, bottom = 18.dp)
         ) {
             UploadSheetHeader(onDismiss = onDismiss)
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             UploadOptionGrid(
                 onPickFile = onPickFile,
                 onCreateFolder = onCreateFolder
@@ -505,23 +504,30 @@ private fun UploadSheetHeader(onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(62.dp)
+            .height(74.dp)
     ) {
         Column(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 54.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "上传文件",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 color = Color.Black,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "文件将保存至「悟空网盘」",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFF8F8F8F)
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF8F8F8F),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
         TextButton(
@@ -549,7 +555,7 @@ private fun UploadOptionGrid(
     Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
@@ -586,7 +592,7 @@ private fun UploadOptionGrid(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
@@ -645,18 +651,15 @@ private fun UploadOptionItem(
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 text = label,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Color.Black,
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
-
-// [设计] 为什么这样写：阶段 4 先支持单文件上传且不限制文件种类，后续 TXT 阅读器和视频播放会根据文件类型分别处理。
-private val UPLOAD_MIME_TYPES = arrayOf("*/*")
 
 // [设计] 为什么这样写：FileProvider 的 authority 必须和 Manifest 中的 `${applicationId}.fileprovider` 保持一致，Screen 只拼接规则，不暴露真实 file:// 路径。
 private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider"
@@ -1408,7 +1411,7 @@ private fun FileRow(
         ListItem(
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             leadingContent = {
-                FileTypeBadge(fileType = file.type)
+                WukongFileTypeIcon(fileType = file.type)
             },
             headlineContent = {
                 Text(
@@ -1436,86 +1439,8 @@ private fun FileRow(
                     )
                 }
             } else {
-                {
-                    Text(
-                        text = if (file.type == FileType.Folder) "进入" else "打开",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                null
             }
-        )
-    }
-}
-
-// [设计] 为什么这样写：当前阶段不额外引入图标依赖，用固定尺寸类型徽章表达“图标/标识”，既能演示类型差异，也不会破坏依赖约束。
-@Composable
-private fun FileTypeBadge(fileType: FileType) {
-    val badge = fileType.toBadgeSpec()
-    Surface(
-        modifier = Modifier.size(42.dp),
-        color = badge.containerColor,
-        contentColor = badge.contentColor,
-        shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, badge.contentColor.copy(alpha = 0.12f))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = badge.shortLabel,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
-
-// [语法] data class 相当于 Java 的 POJO/Bean，自动生成 equals/hashCode/toString/copy，适合承载 UI 徽章需要的几个值。
-// [设计] 为什么这样写：类型徽章不仅需要文字，还需要配色；集中成一个对象，FileTypeBadge 不需要写一堆分散的 when。
-private data class FileTypeBadgeSpec(
-    val shortLabel: String,
-    val containerColor: Color,
-    val contentColor: Color
-)
-
-// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toBadgeSpec(fileType, colorScheme)。
-// [设计] 为什么这样写：文件类型到视觉标识的映射集中在一处，后续如果换成真实图标，只需要替换这里和 FileTypeBadge。
-@Composable
-private fun FileType.toBadgeSpec(): FileTypeBadgeSpec {
-    val colorScheme = MaterialTheme.colorScheme
-    return when (this) {
-        FileType.Folder -> FileTypeBadgeSpec(
-            shortLabel = "夹",
-            containerColor = colorScheme.primaryContainer,
-            contentColor = colorScheme.onPrimaryContainer
-        )
-        FileType.Video -> FileTypeBadgeSpec(
-            shortLabel = "视",
-            containerColor = colorScheme.tertiaryContainer,
-            contentColor = colorScheme.onTertiaryContainer
-        )
-        FileType.Txt -> FileTypeBadgeSpec(
-            shortLabel = "文",
-            containerColor = colorScheme.secondaryContainer,
-            contentColor = colorScheme.onSecondaryContainer
-        )
-        FileType.Image -> FileTypeBadgeSpec(
-            shortLabel = "图",
-            containerColor = colorScheme.surfaceVariant,
-            contentColor = colorScheme.onSurfaceVariant
-        )
-        FileType.Audio -> FileTypeBadgeSpec(
-            shortLabel = "音",
-            containerColor = colorScheme.inversePrimary,
-            contentColor = colorScheme.onPrimaryContainer
-        )
-        FileType.Other -> FileTypeBadgeSpec(
-            shortLabel = "其",
-            containerColor = colorScheme.surfaceVariant,
-            contentColor = colorScheme.onSurfaceVariant
         )
     }
 }
@@ -1536,17 +1461,6 @@ private fun FileType.toDisplayName(): String {
 // [语法] 这是扩展函数，相当于 Java 静态工具方法 FileFilterDisplay.toDisplayName(filter)。
 // [设计] 为什么这样写：筛选枚举本身只表达策略，中文展示文案属于 UI 层，集中在这里便于后续改文案。
 private fun FileFilter.toDisplayName(): String {
-    return when (this) {
-        FileFilter.All -> "全部"
-        FileFilter.Image -> "图片"
-        FileFilter.Video -> "视频"
-        FileFilter.Document -> "文档"
-    }
-}
-
-// [语法] 这是扩展函数，相当于 Java 静态工具方法 FileFilterDisplay.toChipText(filter)。
-// [设计] 为什么这样写：筛选 Chip 需要更短的文案，避免小屏横向滚动时占用过多空间；完整类型名仍由 toDisplayName 复用。
-private fun FileFilter.toChipText(): String {
     return when (this) {
         FileFilter.All -> "全部"
         FileFilter.Image -> "图片"

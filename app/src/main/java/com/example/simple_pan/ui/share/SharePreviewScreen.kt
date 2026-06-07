@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.ShareSnapshotFile
 import com.example.simple_pan.domain.model.ShareType
+import com.example.simple_pan.ui.component.WukongFileTypeIcon
 
 // [设计] 为什么这样写：Screen 只负责连接导航 token、ViewModel 和纯 UI 内容，分享快照仍通过 Repository/Room 读取。
 @Composable
@@ -356,7 +357,7 @@ private fun ShareSnapshotRow(file: ShareSnapshotFile) {
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
-            ShareSnapshotTypeBadge(fileType = file.type)
+            WukongFileTypeIcon(fileType = file.type, size = 42.dp)
         },
         headlineContent = {
             Text(
@@ -377,25 +378,6 @@ private fun ShareSnapshotRow(file: ShareSnapshotFile) {
             )
         }
     )
-}
-
-// [设计] 为什么这样写：阶段内不新增图标依赖，先用固定宽度类型徽章表达文件类型，和文件页的类型标识保持一致。
-@Composable
-private fun ShareSnapshotTypeBadge(fileType: FileType) {
-    Surface(
-        modifier = Modifier.size(40.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shape = MaterialTheme.shapes.medium
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = fileType.toShortLabel(),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
 }
 
 // [语法] 这是 String 的扩展函数，相当于 Java 静态工具方法 ShareTokenDisplay.mask(token)。
@@ -461,19 +443,6 @@ private fun FileType.toDisplayName(): String {
         FileType.Image -> "图片"
         FileType.Audio -> "音频"
         FileType.Other -> "其他"
-    }
-}
-
-// [语法] 这是 FileType 的扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toShortLabel(type)。
-// [设计] 为什么这样写：徽章需要短标签而不是完整中文名，集中映射后后续换成真实图标也只改这里。
-private fun FileType.toShortLabel(): String {
-    return when (this) {
-        FileType.Folder -> "夹"
-        FileType.Video -> "视"
-        FileType.Txt -> "文"
-        FileType.Image -> "图"
-        FileType.Audio -> "音"
-        FileType.Other -> "其"
     }
 }
 

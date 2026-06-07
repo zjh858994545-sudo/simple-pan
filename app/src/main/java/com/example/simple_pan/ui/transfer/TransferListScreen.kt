@@ -1,6 +1,5 @@
 package com.example.simple_pan.ui.transfer
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,11 +32,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.TransferDirection
 import com.example.simple_pan.domain.model.TransferRecord
 import com.example.simple_pan.domain.model.TransferStatus
 import com.example.simple_pan.ui.component.WukongEmptyState
+import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongSegmentedTabs
 import java.text.SimpleDateFormat
@@ -280,7 +279,7 @@ private fun TransferRecordRow(record: TransferRecord) {
         ListItem(
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             leadingContent = {
-                TransferTypeBadge(fileType = record.fileType)
+                WukongFileTypeIcon(fileType = record.fileType)
             },
             headlineContent = {
                 Text(
@@ -319,43 +318,6 @@ private fun TransferRecordRow(record: TransferRecord) {
             }
         )
         HorizontalDivider(color = Color.Transparent)
-    }
-}
-
-@Composable
-private fun TransferTypeBadge(fileType: FileType) {
-    val badge = fileType.toBadgeSpec()
-    Surface(
-        modifier = Modifier.size(50.dp),
-        color = badge.containerColor,
-        contentColor = badge.contentColor,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(1.dp, badge.contentColor.copy(alpha = 0.14f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = badge.shortLabel,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-        }
-    }
-}
-
-private data class TransferBadgeSpec(
-    val shortLabel: String,
-    val containerColor: Color,
-    val contentColor: Color
-)
-
-private fun FileType.toBadgeSpec(): TransferBadgeSpec {
-    return when (this) {
-        FileType.Folder -> TransferBadgeSpec("夹", Color(0xFFE7EEFF), Color(0xFF1E3A8A))
-        FileType.Video -> TransferBadgeSpec("视", Color(0xFFFFDDD7), Color(0xFF9F1239))
-        FileType.Txt -> TransferBadgeSpec("文", Color(0xFFD8F3EF), Color(0xFF115E59))
-        FileType.Image -> TransferBadgeSpec("图", Color(0xFFEAF0F8), Color(0xFF475569))
-        FileType.Audio -> TransferBadgeSpec("音", Color(0xFFE8D9FF), Color(0xFF4C1D95))
-        FileType.Other -> TransferBadgeSpec("其", Color(0xFFEAF0F8), Color(0xFF475569))
     }
 }
 

@@ -1,10 +1,12 @@
 package com.example.simple_pan.ui.component
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -108,13 +113,109 @@ fun WukongTopIconButton(
         modifier = modifier.size(48.dp),
         onClick = onClick
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.headlineMedium,
+        when (text) {
+            "<" -> WukongBackGlyph()
+            "⇅" -> WukongTransferGlyph()
+            "⌕" -> WukongSearchGlyph()
+            else -> Text(
+                text = text,
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.Black,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun WukongBackGlyph() {
+    Canvas(
+        modifier = Modifier
+            .size(30.dp)
+    ) {
+        val stroke = size.width * 0.12f
+        drawLine(
             color = Color.Black,
-            fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center
+            start = Offset(size.width * 0.64f, size.height * 0.18f),
+            end = Offset(size.width * 0.34f, size.height * 0.50f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
         )
+        drawLine(
+            color = Color.Black,
+            start = Offset(size.width * 0.34f, size.height * 0.50f),
+            end = Offset(size.width * 0.64f, size.height * 0.82f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun WukongSearchGlyph() {
+    Canvas(
+        modifier = Modifier
+            .size(32.dp)
+    ) {
+        val stroke = size.width * 0.11f
+        drawCircle(
+            color = Color.Black,
+            radius = size.width * 0.30f,
+            center = Offset(size.width * 0.43f, size.height * 0.42f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        )
+        drawLine(
+            color = Color.Black,
+            start = Offset(size.width * 0.66f, size.height * 0.66f),
+            end = Offset(size.width * 0.88f, size.height * 0.88f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun WukongTransferGlyph() {
+    Canvas(
+        modifier = Modifier
+            .size(32.dp)
+    ) {
+        val stroke = size.width * 0.09f
+        drawCircle(
+            color = Color.Black,
+            radius = size.width * 0.39f,
+            center = Offset(size.width * 0.50f, size.height * 0.50f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        )
+        drawLine(
+            color = Color.Black,
+            start = Offset(size.width * 0.39f, size.height * 0.30f),
+            end = Offset(size.width * 0.39f, size.height * 0.70f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color.Black,
+            start = Offset(size.width * 0.61f, size.height * 0.30f),
+            end = Offset(size.width * 0.61f, size.height * 0.70f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        val upArrow = Path().apply {
+            moveTo(size.width * 0.39f, size.height * 0.24f)
+            lineTo(size.width * 0.30f, size.height * 0.36f)
+            lineTo(size.width * 0.48f, size.height * 0.36f)
+            close()
+        }
+        val downArrow = Path().apply {
+            moveTo(size.width * 0.61f, size.height * 0.76f)
+            lineTo(size.width * 0.52f, size.height * 0.64f)
+            lineTo(size.width * 0.70f, size.height * 0.64f)
+            close()
+        }
+        drawPath(upArrow, Color.Black)
+        drawPath(downArrow, Color.Black)
     }
 }
 

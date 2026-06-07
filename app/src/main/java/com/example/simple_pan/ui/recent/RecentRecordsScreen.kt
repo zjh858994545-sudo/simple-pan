@@ -1,6 +1,5 @@
 package com.example.simple_pan.ui.recent
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -33,9 +31,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.simple_pan.domain.model.FileType
 import com.example.simple_pan.domain.model.RecentRecord
 import com.example.simple_pan.ui.component.WukongEmptyState
+import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongTitleTopBar
 import java.text.SimpleDateFormat
@@ -139,7 +137,7 @@ private fun RecentRecordRow(record: RecentRecord) {
                 .padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RecentFileTypeBadge(fileType = record.fileType)
+            WukongFileTypeIcon(fileType = record.fileType, size = 44.dp)
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -159,25 +157,6 @@ private fun RecentRecordRow(record: RecentRecord) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun RecentFileTypeBadge(fileType: FileType) {
-    Surface(
-        modifier = Modifier.size(44.dp),
-        color = fileType.toBadgeColor(),
-        contentColor = Color.Black,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.06f))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = fileType.toShortLabel(),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Black
-            )
         }
     }
 }
@@ -240,28 +219,6 @@ private fun RecentRecord.actionText(): String {
             "share_save" -> "分享保存"
             else -> "转存"
         }
-    }
-}
-
-private fun FileType.toShortLabel(): String {
-    return when (this) {
-        FileType.Folder -> "夹"
-        FileType.Video -> "视"
-        FileType.Txt -> "文"
-        FileType.Image -> "图"
-        FileType.Audio -> "音"
-        FileType.Other -> "其"
-    }
-}
-
-private fun FileType.toBadgeColor(): Color {
-    return when (this) {
-        FileType.Folder -> Color(0xFFE8EDFF)
-        FileType.Video -> Color(0xFFEDE5FF)
-        FileType.Txt -> Color(0xFFE7F7EC)
-        FileType.Image -> Color(0xFFFFF1D8)
-        FileType.Audio -> Color(0xFFFFE2E8)
-        FileType.Other -> Color(0xFFEFEFEF)
     }
 }
 
