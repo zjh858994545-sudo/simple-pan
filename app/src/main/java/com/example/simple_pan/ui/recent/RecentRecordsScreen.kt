@@ -17,15 +17,20 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,6 +41,7 @@ import com.example.simple_pan.ui.component.WukongEmptyState
 import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongTitleTopBar
+import com.example.simple_pan.ui.openfile.openVideoFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,9 +53,12 @@ fun RecentRecordsScreen(
     onBackClick: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTransfer: () -> Unit,
+    onOpenTxtReader: (fileId: String, fileName: String) -> Unit,
     viewModel: RecentRecordsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // [语法] LaunchedEffect(type) 会在 type 变化时重新执行一次，适合页面参数驱动加载。
     // [设计] 为什么这样写：导航参数决定展示最近转存还是最近浏览，Screen 不直接调用 Repository，只把参数转成 Intent。
@@ -57,27 +66,60 @@ fun RecentRecordsScreen(
         viewModel.onIntent(RecentRecordsIntent.Load(type))
     }
 
-    RecentRecordsContent(
-        state = state,
-        onBackClick = onBackClick,
-        onOpenSearch = onOpenSearch,
-        onOpenTransfer = onOpenTransfer,
-        onRetry = {
-            viewModel.onIntent(RecentRecordsIntent.Retry)
+    // [设计] 为什么这样写：打开文件是一次性动作，ViewModel 发 Effect，Screen 负责导航和 Android 平台 Intent。
+    LaunchedEffect(viewModel, context) {
+        viewModel.effect.collect { effect ->
+            when (effect) {
+                is RecentRecordsEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is RecentRecordsEffect.OpenTxtReader -> onOpenTxtReader(effect.fileId, effect.fileName)
+                is RecentRecordsEffect.OpenVideoPlayer -> {
+                    val errorMessage = context.openVideoFile(
+                        localPath = effect.localPath,
+                        mimeType = effect.mimeType
+                    )
+                    if (errorMessage == null) {
+                        viewModel.onIntent(RecentRecordsIntent.RecordOpenedFile(effect.fileId))
+                    } else {
+                        snackbarHostState.showSnackbar(errorMessage)
+                    }
+                }
+            }
         }
-    )
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        }
+    ) { contentPadding ->
+        RecentRecordsContent(
+            modifier = Modifier.padding(contentPadding),
+            state = state,
+            onBackClick = onBackClick,
+            onOpenSearch = onOpenSearch,
+            onOpenTransfer = onOpenTransfer,
+            onRecordClick = { record ->
+                viewModel.onIntent(RecentRecordsIntent.OpenFile(record.fileId))
+            },
+            onRetry = {
+                viewModel.onIntent(RecentRecordsIntent.Retry)
+            }
+        )
+    }
 }
 
 @Composable
 private fun RecentRecordsContent(
+    modifier: Modifier = Modifier,
     state: RecentRecordsState,
     onBackClick: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTransfer: () -> Unit,
+    onRecordClick: (RecentRecord) -> Unit,
     onRetry: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         color = WukongPageBackground
     ) {
         Column(
@@ -102,14 +144,20 @@ private fun RecentRecordsContent(
                     modifier = Modifier.fillMaxSize(),
                     text = state.type.toEmptyText()
                 )
-                else -> RecentRecordsList(records = state.records)
+                else -> RecentRecordsList(
+                    records = state.records,
+                    onRecordClick = onRecordClick
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RecentRecordsList(records: List<RecentRecord>) {
+private fun RecentRecordsList(
+    records: List<RecentRecord>,
+    onRecordClick: (RecentRecord) -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -118,7 +166,10 @@ private fun RecentRecordsList(records: List<RecentRecord>) {
             items = records,
             key = { record -> "${record.recordType}-${record.fileId}-${record.timestamp}" }
         ) { record ->
-            RecentRecordRow(record = record)
+            RecentRecordRow(
+                record = record,
+                onClick = { onRecordClick(record) }
+            )
             HorizontalDivider(color = Color(0xFFEDEDED))
         }
     }
@@ -126,10 +177,14 @@ private fun RecentRecordsList(records: List<RecentRecord>) {
 
 // [设计] 为什么这样写：全量页比首页显示更多细节，包含文件类型、文件名、行为来源和时间，用户能确认“全部”确实是历史列表。
 @Composable
-private fun RecentRecordRow(record: RecentRecord) {
+private fun RecentRecordRow(
+    record: RecentRecord,
+    onClick: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color.Transparent
+        color = Color.Transparent,
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier

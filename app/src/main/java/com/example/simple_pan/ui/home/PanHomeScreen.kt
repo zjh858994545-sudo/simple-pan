@@ -20,10 +20,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +46,7 @@ import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongPlusButton
 import com.example.simple_pan.ui.component.WukongTopTab
 import com.example.simple_pan.ui.component.WukongTopTabs
+import com.example.simple_pan.ui.openfile.openVideoFile
 import com.example.simple_pan.ui.space.WukongSignInDialog
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -54,6 +60,7 @@ fun PanHomeScreen(
     onOpenTransfer: () -> Unit,
     onOpenRecentTransfer: () -> Unit,
     onOpenRecentOpen: () -> Unit,
+    onOpenTxtReader: (fileId: String, fileName: String) -> Unit,
     onOpenSpaceManagement: () -> Unit,
     onOpenMySubscription: () -> Unit,
     onOpenMyShare: () -> Unit,
@@ -63,27 +70,61 @@ fun PanHomeScreen(
     // [语法] by 是 Kotlin 委托语法，这里把 State<PanHomeState> 解包成普通变量，类似 Java 每次调用 state.getValue()。
     // [设计] 为什么这样写：collectAsStateWithLifecycle 会按页面生命周期收集 State，页面不可见时减少无意义更新。
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
-    PanHomeContent(
-        state = state,
-        onOpenFiles = onOpenFiles,
-        onOpenSearch = onOpenSearch,
-        onOpenTransfer = onOpenTransfer,
-        onOpenRecentTransfer = onOpenRecentTransfer,
-        onOpenRecentOpen = onOpenRecentOpen,
-        onOpenSpaceManagement = onOpenSpaceManagement,
-        onOpenMySubscription = onOpenMySubscription,
-        onOpenMyShare = onOpenMyShare,
-        onOpenCloudCollection = onOpenCloudCollection,
-        onRetry = {
-            viewModel.onIntent(PanHomeIntent.Retry)
+    // [设计] 为什么这样写：Effect 是一次性动作，首页只消费事件，不把导航和 Android Intent 写进 State。
+    LaunchedEffect(viewModel, context) {
+        viewModel.effect.collect { effect ->
+            when (effect) {
+                is PanHomeEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+                is PanHomeEffect.OpenTxtReader -> onOpenTxtReader(effect.fileId, effect.fileName)
+                is PanHomeEffect.OpenVideoPlayer -> {
+                    val errorMessage = context.openVideoFile(
+                        localPath = effect.localPath,
+                        mimeType = effect.mimeType
+                    )
+                    if (errorMessage == null) {
+                        viewModel.onIntent(PanHomeIntent.RecordOpenedFile(effect.fileId))
+                    } else {
+                        snackbarHostState.showSnackbar(errorMessage)
+                    }
+                }
+            }
         }
-    )
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        }
+    ) { contentPadding ->
+        PanHomeContent(
+            modifier = Modifier.padding(contentPadding),
+            state = state,
+            onOpenFiles = onOpenFiles,
+            onOpenSearch = onOpenSearch,
+            onOpenTransfer = onOpenTransfer,
+            onOpenRecentTransfer = onOpenRecentTransfer,
+            onOpenRecentOpen = onOpenRecentOpen,
+            onOpenSpaceManagement = onOpenSpaceManagement,
+            onOpenMySubscription = onOpenMySubscription,
+            onOpenMyShare = onOpenMyShare,
+            onOpenCloudCollection = onOpenCloudCollection,
+            onRecentRecordClick = { record ->
+                viewModel.onIntent(PanHomeIntent.OpenRecentFile(record.fileId))
+            },
+            onRetry = {
+                viewModel.onIntent(PanHomeIntent.Retry)
+            }
+        )
+    }
 }
 
 // [设计] 为什么这样写：纯展示函数只依赖 State 和回调，后续 Preview 或 UI 测试可以不启动 Hilt/Room。
 @Composable
 private fun PanHomeContent(
+    modifier: Modifier = Modifier,
     state: PanHomeState,
     onOpenFiles: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -94,12 +135,13 @@ private fun PanHomeContent(
     onOpenMySubscription: () -> Unit,
     onOpenMyShare: () -> Unit,
     onOpenCloudCollection: () -> Unit,
+    onRecentRecordClick: (RecentRecord) -> Unit,
     onRetry: () -> Unit
 ) {
     var isSignInDialogVisible by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         color = WukongPageBackground
     ) {
         when {
@@ -136,14 +178,16 @@ private fun PanHomeContent(
                         title = "最近转存",
                         emptyText = "暂无转存记录",
                         records = state.recentTransfer,
-                        onAllClick = onOpenRecentTransfer
+                        onAllClick = onOpenRecentTransfer,
+                        onRecordClick = onRecentRecordClick
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     RecentPanel(
                         title = "最近浏览",
                         emptyText = "暂无浏览记录",
                         records = state.recentOpen,
-                        onAllClick = onOpenRecentOpen
+                        onAllClick = onOpenRecentOpen,
+                        onRecordClick = onRecentRecordClick
                     )
                     Spacer(modifier = Modifier.height(110.dp))
                 }
@@ -374,7 +418,8 @@ private fun RecentPanel(
     title: String,
     emptyText: String,
     records: List<RecentRecord>,
-    onAllClick: () -> Unit
+    onAllClick: () -> Unit,
+    onRecordClick: (RecentRecord) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -417,7 +462,10 @@ private fun RecentPanel(
                 }
             } else {
                 records.take(3).forEachIndexed { index, record ->
-                    RecentHomeRow(record = record)
+                    RecentHomeRow(
+                        record = record,
+                        onClick = { onRecordClick(record) }
+                    )
                     if (index != records.take(3).lastIndex) {
                         HorizontalDivider(color = Color(0xFFEDEDED))
                     }
@@ -429,8 +477,16 @@ private fun RecentPanel(
 
 // [设计] 为什么这样写：最近记录行在首页保持简洁，只显示文件名和行为来源，详细打开仍在文件页完成。
 @Composable
-private fun RecentHomeRow(record: RecentRecord) {
-    Column(modifier = Modifier.padding(vertical = 10.dp)) {
+private fun RecentHomeRow(
+    record: RecentRecord,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        onClick = onClick
+    ) {
+        Column(modifier = Modifier.padding(vertical = 10.dp)) {
         Text(
             text = record.fileName,
             style = MaterialTheme.typography.titleMedium,
@@ -448,6 +504,7 @@ private fun RecentHomeRow(record: RecentRecord) {
             overflow = TextOverflow.Ellipsis
         )
     }
+}
 }
 
 // [语法] 这是 RecentRecord 的扩展函数，相当于 Java 静态工具方法 RecentRecordDisplay.actionText(record)。

@@ -3,7 +3,7 @@ package com.example.simple_pan.ui.recent
 import com.example.simple_pan.domain.model.RecentRecord
 
 // [语法] enum class 和 Java enum 类似，用固定常量表达有限页面类型。
-// [设计] 为什么这样写：最近转存和最近浏览共用一套列表 UI，但数据来源不同；用类型参数区分，避免复制两套几乎一样的页面。
+// [设计] 为什么这样写：最近转存和最近浏览共用一套列表 UI，但数据来源不同，用类型参数区分。
 enum class RecentRecordsType {
     Transfer,
     Open
@@ -18,10 +18,28 @@ data class RecentRecordsState(
     val errorMessage: String? = null
 )
 
-// [语法] sealed interface 表示有限事件集合，when 处理时编译器能检查分支是否覆盖。
-// [设计] 为什么这样写：页面加载和重试都通过 Intent 进入 ViewModel，保持和首页、文件页一致的 MVI 数据流。
+// [语法] sealed interface 表示有限事件集合，when 处理时编译器能检查分支是否遗漏。
+// [设计] 为什么这样写：页面加载、重试、打开记录都通过 Intent 进入 ViewModel，保持和首页/文件页一致的 MVI 数据流。
 sealed interface RecentRecordsIntent {
     data class Load(val type: RecentRecordsType) : RecentRecordsIntent
 
     data object Retry : RecentRecordsIntent
+
+    data class OpenFile(val fileId: String) : RecentRecordsIntent
+
+    data class RecordOpenedFile(val fileId: String) : RecentRecordsIntent
+}
+
+// [设计] 为什么这样写：Snackbar、阅读器导航、系统播放器都是一次性动作，不应该存进 RecentRecordsState。
+sealed interface RecentRecordsEffect {
+    data class ShowMessage(val message: String) : RecentRecordsEffect
+
+    data class OpenTxtReader(val fileId: String, val fileName: String) : RecentRecordsEffect
+
+    data class OpenVideoPlayer(
+        val fileId: String,
+        val fileName: String,
+        val localPath: String,
+        val mimeType: String
+    ) : RecentRecordsEffect
 }

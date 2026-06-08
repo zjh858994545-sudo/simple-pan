@@ -86,6 +86,9 @@ fun AppNavGraph() {
                     onOpenRecentOpen = {
                         navController.navigate(Routes.recentRecords(Routes.RECENT_RECORD_TYPE_OPEN))
                     },
+                    onOpenTxtReader = { fileId, fileName ->
+                        navController.navigate(Routes.txtReader(fileId, fileName))
+                    },
                     onOpenSpaceManagement = {
                         navController.navigate(Routes.SPACE_MANAGEMENT)
                     },
@@ -242,6 +245,9 @@ fun AppNavGraph() {
                     },
                     onOpenTransfer = {
                         navController.navigate(Routes.TRANSFER_LIST)
+                    },
+                    onOpenTxtReader = { fileId, fileName ->
+                        navController.navigate(Routes.txtReader(fileId, fileName))
                     }
                 )
             }
