@@ -1,6 +1,6 @@
 # SimplePan
 
-SimplePan 是一个基于 Android Kotlin + Jetpack Compose 的简易个人网盘客户端。项目围绕“文件树浏览、文件管理、上传、最近转存、TXT 阅读器、视频打开、分享与 DeepLink”等核心链路实现，主要用于课程设计、功能演示和技术答辩。
+SimplePan 是一个基于 Android Kotlin + Jetpack Compose 的简易个人网盘客户端。项目围绕“文件树浏览、文件管理、上传、最近转存、TXT 阅读器、视频打开、分享与 DeepLink”等核心链路实现。
 
 ## 1. 项目功能概览
 
