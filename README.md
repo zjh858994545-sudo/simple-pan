@@ -222,16 +222,3 @@ Room 会保留本地数据库数据。如果修改了 mock 数据或初始化逻
 ### 9.4 TXT 阅读器首次分页较慢
 
 最终版阅读器使用 Compose `TextMeasurer` 做真实排版分页，首次打开长文本需要测量全文。项目已经加入分页缓存，相同文件、字号和页面尺寸再次打开时会明显变快。
-
-## 10. 文档目录
-
-更多过程记录和答辩材料位于 `docs/` 目录：
-
-- `docs/DEVELOPER_GUIDE.md`：开发指南与阶段拆分。
-- `docs/DECISIONS.md`：关键技术决策和踩坑复盘。
-- `docs/INTERVIEW_QA.md`：答辩常见问题。
-- `docs/DEMO_SCRIPT.md`：演示脚本。
-
-## 11. License
-
-MIT
