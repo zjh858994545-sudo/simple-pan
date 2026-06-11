@@ -52,11 +52,47 @@ import com.example.simple_pan.ui.component.WukongTopBarHeight
 import com.example.simple_pan.ui.component.WukongTopIconButton
 import com.example.simple_pan.ui.component.WukongTopTitleFontSize
 import com.example.simple_pan.ui.component.WukongTopTitleLineHeight
+import java.util.LinkedHashMap
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import timber.log.Timber
 
 private const val TXT_READER_PERF_TAG = "TxtReaderPerf"
+
+private data class TxtPaginationCacheKey(
+    val fileId: String,
+    val contentLength: Int,
+    val contentHash: Int,
+    val fontSizeSp: Int,
+    val pageWidthPx: Int,
+    val pageHeightPx: Int
+)
+
+private object TxtPaginationCache {
+    private const val MAX_ENTRIES = 8
+
+    private val pagesByKey = object : LinkedHashMap<TxtPaginationCacheKey, List<TxtReaderPage>>(
+        MAX_ENTRIES,
+        0.75f,
+        true
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<TxtPaginationCacheKey, List<TxtReaderPage>>
+        ): Boolean {
+            return size > MAX_ENTRIES
+        }
+    }
+
+    @Synchronized
+    fun get(key: TxtPaginationCacheKey): List<TxtReaderPage>? {
+        return pagesByKey[key]
+    }
+
+    @Synchronized
+    fun put(key: TxtPaginationCacheKey, pages: List<TxtReaderPage>) {
+        pagesByKey[key] = pages
+    }
+}
 
 // [设计] 为什么这样写：阅读器页面只连接路由参数、ViewModel State 和测量分页 UI；磁盘读取仍交给 UseCase，真实分页则依赖 Compose 文本测量。
 @Composable
@@ -344,32 +380,67 @@ private fun TxtReaderPageFrame(
                     pageHeightPx > 0 &&
                     state.errorMessage == null
                 ) {
-                    val paginateStartMs = SystemClock.elapsedRealtime()
-                    val pages = paginateMeasuredText(
-                        content = state.content,
-                        textMeasurer = textMeasurer,
-                        textStyle = textStyle,
-                        maxWidthPx = pageWidthPx,
-                        maxHeightPx = pageHeightPx
+                    val cacheKeyStartMs = SystemClock.elapsedRealtime()
+                    val cacheKey = TxtPaginationCacheKey(
+                        fileId = state.fileId,
+                        contentLength = state.content.length,
+                        contentHash = state.content.hashCode(),
+                        fontSizeSp = state.fontSizeSp,
+                        pageWidthPx = pageWidthPx,
+                        pageHeightPx = pageHeightPx
                     )
-                    val paginateCostMs = SystemClock.elapsedRealtime() - paginateStartMs
-                    val averageCharsPerPage = if (pages.isEmpty()) {
-                        0
+                    val cachedPages = TxtPaginationCache.get(cacheKey)
+                    val cacheLookupCostMs = SystemClock.elapsedRealtime() - cacheKeyStartMs
+                    if (cachedPages != null) {
+                        Timber.tag(TXT_READER_PERF_TAG).d(
+                            "pagination cache hit generation=%d chars=%d pages=%d fontSizeSp=%d pageWidthPx=%d pageHeightPx=%d lookupCostMs=%d",
+                            generation,
+                            state.content.length,
+                            cachedPages.size,
+                            state.fontSizeSp,
+                            pageWidthPx,
+                            pageHeightPx,
+                            cacheLookupCostMs
+                        )
+                        onMeasuredPages(generation, cachedPages)
                     } else {
-                        state.content.length / pages.size
+                        Timber.tag(TXT_READER_PERF_TAG).d(
+                            "pagination cache miss generation=%d chars=%d fontSizeSp=%d pageWidthPx=%d pageHeightPx=%d lookupCostMs=%d",
+                            generation,
+                            state.content.length,
+                            state.fontSizeSp,
+                            pageWidthPx,
+                            pageHeightPx,
+                            cacheLookupCostMs
+                        )
+                        val paginateStartMs = SystemClock.elapsedRealtime()
+                        val pages = paginateMeasuredText(
+                            content = state.content,
+                            textMeasurer = textMeasurer,
+                            textStyle = textStyle,
+                            maxWidthPx = pageWidthPx,
+                            maxHeightPx = pageHeightPx
+                        )
+                        val paginateCostMs = SystemClock.elapsedRealtime() - paginateStartMs
+                        val averageCharsPerPage = if (pages.isEmpty()) {
+                            0
+                        } else {
+                            state.content.length / pages.size
+                        }
+                        TxtPaginationCache.put(cacheKey, pages)
+                        Timber.tag(TXT_READER_PERF_TAG).d(
+                            "paginate success generation=%d chars=%d pages=%d avgCharsPerPage=%d costMs=%d fontSizeSp=%d pageWidthPx=%d pageHeightPx=%d cached=true",
+                            generation,
+                            state.content.length,
+                            pages.size,
+                            averageCharsPerPage,
+                            paginateCostMs,
+                            state.fontSizeSp,
+                            pageWidthPx,
+                            pageHeightPx
+                        )
+                        onMeasuredPages(generation, pages)
                     }
-                    Timber.tag(TXT_READER_PERF_TAG).d(
-                        "paginate success generation=%d chars=%d pages=%d avgCharsPerPage=%d costMs=%d fontSizeSp=%d pageWidthPx=%d pageHeightPx=%d",
-                        generation,
-                        state.content.length,
-                        pages.size,
-                        averageCharsPerPage,
-                        paginateCostMs,
-                        state.fontSizeSp,
-                        pageWidthPx,
-                        pageHeightPx
-                    )
-                    onMeasuredPages(generation, pages)
                 }
             }
 
