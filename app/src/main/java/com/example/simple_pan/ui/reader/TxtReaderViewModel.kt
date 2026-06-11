@@ -1,5 +1,6 @@
 package com.example.simple_pan.ui.reader
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.simple_pan.domain.model.FileType
@@ -13,6 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import timber.log.Timber
+
+private const val TXT_READER_PERF_TAG = "TxtReaderPerf"
 
 // [语法] @HiltViewModel 表示这个 ViewModel 由 Hilt 创建并注入依赖，类似 Java 项目里由 DI 容器创建 Controller。
 // [设计] 为什么这样写：阅读器的文件读取由 domain UseCase 处理，ViewModel 只负责把读取结果、分页结果和用户操作转成稳定 UI State。
@@ -70,8 +74,27 @@ class TxtReaderViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val readStartMs = SystemClock.elapsedRealtime()
             try {
-                when (val result = readTxtFileUseCase(fileId)) {
+                val result = readTxtFileUseCase(fileId)
+                val readCostMs = SystemClock.elapsedRealtime() - readStartMs
+                if (result is ReadTxtFileResult.Loaded) {
+                    Timber.tag(TXT_READER_PERF_TAG).d(
+                        "read success fileId=%s chars=%d costMs=%d",
+                        result.fileId,
+                        result.content.length,
+                        readCostMs
+                    )
+                } else {
+                    Timber.tag(TXT_READER_PERF_TAG).w(
+                        "read failed fileId=%s result=%s costMs=%d",
+                        fileId,
+                        result.javaClass.simpleName,
+                        readCostMs
+                    )
+                }
+
+                when (result) {
                     is ReadTxtFileResult.Loaded -> {
                         _state.update { currentState ->
                             currentState.copy(
@@ -99,6 +122,12 @@ class TxtReaderViewModel @Inject constructor(
                     is ReadTxtFileResult.Failed -> showReadError(result.message.toReadFailedMessage())
                 }
             } catch (throwable: Throwable) {
+                Timber.tag(TXT_READER_PERF_TAG).e(
+                    throwable,
+                    "read exception fileId=%s costMs=%d",
+                    fileId,
+                    SystemClock.elapsedRealtime() - readStartMs
+                )
                 showReadError(throwable.message.toReadFailedMessage())
             }
         }
@@ -195,12 +224,21 @@ class TxtReaderViewModel @Inject constructor(
 
     // [设计] 为什么这样写：测量分页依赖正文区域尺寸和字体样式，只能由 Screen 计算；ViewModel 负责接收结果并恢复到最接近原阅读位置的页面。
     private fun applyMeasuredPages(generation: Int, pages: List<TxtReaderPage>) {
+        val applyStartMs = SystemClock.elapsedRealtime()
+        var applied = false
+        var finalPageCount = pages.size
+        var finalCurrentPage = 0
         _state.update { currentState ->
             if (generation != currentState.paginationGeneration) {
+                finalPageCount = currentState.pages.size
+                finalCurrentPage = currentState.currentPageNumber
                 currentState
             } else {
                 val boundedPages = pages.filter { page -> page.startIndex < page.endIndex }
                 val nextIndex = boundedPages.findPageIndexForAnchor(currentState.pendingAnchorIndex)
+                applied = true
+                finalPageCount = boundedPages.size
+                finalCurrentPage = if (boundedPages.isEmpty()) 0 else nextIndex + 1
                 currentState.copy(
                     pages = boundedPages,
                     currentPageIndex = nextIndex,
@@ -209,6 +247,15 @@ class TxtReaderViewModel @Inject constructor(
                 )
             }
         }
+        Timber.tag(TXT_READER_PERF_TAG).d(
+            "apply measured pages generation=%d applied=%s incomingPages=%d finalPages=%d currentPage=%d costMs=%d",
+            generation,
+            applied,
+            pages.size,
+            finalPageCount,
+            finalCurrentPage,
+            SystemClock.elapsedRealtime() - applyStartMs
+        )
     }
 
     private fun List<TxtReaderPage>.findPageIndexForAnchor(anchorIndex: Int): Int {

@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -107,6 +109,7 @@ fun PanSearchScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         }
@@ -152,7 +155,8 @@ private fun PanSearchContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             SearchHeader(
                 keyword = state.keyword,
@@ -225,7 +229,7 @@ private fun SearchHeader(
                 text = "搜索",
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.Black,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
@@ -354,7 +358,7 @@ private fun SearchResultRow(
                     text = file.name,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF111827)
                 )
             },

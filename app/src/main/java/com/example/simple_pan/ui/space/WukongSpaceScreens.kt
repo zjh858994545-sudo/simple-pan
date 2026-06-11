@@ -21,7 +21,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,14 +34,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.simple_pan.ui.component.WukongEmptyState
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongSegmentedTabs
 import com.example.simple_pan.ui.component.WukongTitleTopBar
 
-private const val TOTAL_SPACE_TEXT = "1.01 TB"
-private const val USED_SPACE_TEXT = "0 KB"
+private const val TOTAL_SPACE_TEXT = "1.01TB"
+private const val USED_SPACE_TEXT = "33.30MB"
 
 // [设计] 为什么这样写：空间管理是首页“管理空间”的真实落点，先按参考图补齐容量卡片、获取容量和文件清理三块 UI。
 @Composable
@@ -63,7 +63,7 @@ fun SpaceManagementScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             WukongTitleTopBar(
                 title = "空间管理",
@@ -71,11 +71,11 @@ fun SpaceManagementScreen(
                 onTransferClick = onOpenTransfer,
                 onSearchClick = onOpenSearch
             )
-            Spacer(modifier = Modifier.height(18.dp))
-            SpaceSummaryCard(onOpenTotalSpaceDetail = onOpenTotalSpaceDetail)
-            Spacer(modifier = Modifier.height(34.dp))
-            SectionTitle(text = "获取更多容量")
             Spacer(modifier = Modifier.height(14.dp))
+            SpaceSummaryCard(onOpenTotalSpaceDetail = onOpenTotalSpaceDetail)
+            Spacer(modifier = Modifier.height(26.dp))
+            SectionTitle(text = "获取更多容量")
+            Spacer(modifier = Modifier.height(10.dp))
             SpaceActionCard(
                 iconText = "✓",
                 iconColor = Color(0xFFFFD95B),
@@ -86,7 +86,7 @@ fun SpaceManagementScreen(
                     isSignInDialogVisible = true
                 }
             )
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             SpaceActionCard(
                 iconText = "AD",
                 iconColor = Color(0xFFB57AF2),
@@ -95,9 +95,9 @@ fun SpaceManagementScreen(
                 buttonText = "去观看",
                 onClick = {}
             )
-            Spacer(modifier = Modifier.height(34.dp))
+            Spacer(modifier = Modifier.height(26.dp))
             SectionTitle(text = "文件清理")
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             SpaceActionCard(
                 iconText = "⚡",
                 iconColor = Color(0xFF64D08A),
@@ -124,9 +124,9 @@ private fun SpaceSummaryCard(onOpenTotalSpaceDetail: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.White,
-        shape = RoundedCornerShape(26.dp)
+        shape = RoundedCornerShape(22.dp)
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -134,82 +134,123 @@ private fun SpaceSummaryCard(onOpenTotalSpaceDetail: () -> Unit) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "已用空间",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp
+                        ),
                         color = Color(0xFF777777)
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = USED_SPACE_TEXT,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 26.sp,
+                            lineHeight = 32.sp
+                        ),
                         color = Color.Black,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Surface(
                     modifier = Modifier
                         .width(1.dp)
-                        .height(72.dp),
+                        .height(60.dp),
                     color = Color(0xFFEDEDED)
                 ) {}
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 28.dp)
+                        .padding(start = 26.dp)
                 ) {
-                    TextButton(onClick = onOpenTotalSpaceDetail) {
+                    Surface(
+                        color = Color.Transparent,
+                        onClick = onOpenTotalSpaceDetail
+                    ) {
                         Text(
                             text = "总空间 >",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 14.sp,
+                                lineHeight = 19.sp
+                            ),
                             color = Color(0xFF777777),
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = TOTAL_SPACE_TEXT,
-                        style = MaterialTheme.typography.headlineLarge,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 26.sp,
+                            lineHeight = 32.sp
+                        ),
                         color = Color.Black,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
             LinearProgressIndicator(
                 progress = { 0f },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(26.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+                    .height(18.dp)
+                    .clip(RoundedCornerShape(9.dp)),
                 color = Color(0xFF9EA7FF),
                 trackColor = Color(0xFFEDEDED)
             )
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SpaceLegendDot(text = "个人文件已用 0KB", color = Color(0xFF9EA7FF))
-                SpaceLegendDot(text = "云收藏已用 0KB", color = Color(0xFFC7D0FF))
-                SpaceLegendDot(text = "未用空间", color = Color(0xFFD8D8D8))
+                SpaceLegendDot(
+                    modifier = Modifier.weight(1.18f),
+                    text = "个人文件已用 33.30MB",
+                    color = Color(0xFF9EA7FF)
+                )
+                SpaceLegendDot(
+                    modifier = Modifier.weight(1f),
+                    text = "云收藏已用 0KB",
+                    color = Color(0xFFC7D0FF)
+                )
+                SpaceLegendDot(
+                    modifier = Modifier.weight(0.68f),
+                    text = "未用空间",
+                    color = Color(0xFFD8D8D8)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SpaceLegendDot(text: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+private fun SpaceLegendDot(
+    modifier: Modifier = Modifier,
+    text: String,
+    color: Color
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             modifier = Modifier
                 .size(8.dp)
                 .background(color, CircleShape)
         )
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(5.dp))
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            ),
             color = Color.Black,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -220,9 +261,12 @@ private fun SpaceLegendDot(text: String, color: Color) {
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.headlineSmall,
+        style = MaterialTheme.typography.headlineSmall.copy(
+            fontSize = 22.sp,
+            lineHeight = 28.sp
+        ),
         color = Color.Black,
-        fontWeight = FontWeight.Black
+        fontWeight = FontWeight.SemiBold
     )
 }
 
@@ -241,37 +285,46 @@ private fun SpaceActionCard(
         shape = RoundedCornerShape(18.dp)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(56.dp),
+                modifier = Modifier.size(46.dp),
                 color = iconColor,
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = iconText,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 17.sp,
+                            lineHeight = 21.sp
+                        ),
                         color = Color.White,
-                        fontWeight = FontWeight.Black
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
-            Spacer(modifier = Modifier.width(18.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 18.sp,
+                        lineHeight = 23.sp
+                    ),
                     color = Color.Black,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp
+                    ),
                     color = Color(0xFF8A8A8A),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -284,11 +337,14 @@ private fun SpaceActionCard(
                 onClick = onClick
             ) {
                 Text(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
                     text = buttonText,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 15.sp,
+                        lineHeight = 19.sp
+                    ),
                     color = Color.Black,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -305,7 +361,7 @@ fun TotalSpaceDetailScreen(onBackClick: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             WukongTitleTopBar(
                 title = "总空间明细",
@@ -385,7 +441,7 @@ fun SimplePanEmptyScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             WukongTitleTopBar(
                 title = title,
@@ -415,7 +471,7 @@ fun CloudCollectionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             WukongTitleTopBar(
                 title = "云收藏文件",

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.simple_pan.ui.component.WukongPageBackground
+import com.example.simple_pan.ui.component.WukongTitleTopBar
 
 // [设计] 为什么这样写：传输设置页目前只展示默认下载目录说明，和参考图一致；真正复制路径功能后续可接 ClipboardManager。
 @Composable
@@ -30,29 +30,16 @@ fun TransferSettingsScreen(onBackClick: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onBackClick) {
-                    Text(
-                        text = "<",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.Black
-                    )
-                }
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = "传输设置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                    color = Color.Black
-                )
-            }
+            WukongTitleTopBar(
+                title = "传输设置",
+                onBackClick = onBackClick,
+                onTransferClick = {},
+                onSearchClick = {},
+                showTransferButton = false,
+                showSearchButton = false
+            )
             Spacer(modifier = Modifier.height(20.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth(),

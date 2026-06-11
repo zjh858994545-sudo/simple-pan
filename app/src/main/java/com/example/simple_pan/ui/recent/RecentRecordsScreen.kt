@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -88,6 +89,7 @@ fun RecentRecordsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         }
@@ -125,7 +127,7 @@ private fun RecentRecordsContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             WukongTitleTopBar(
                 title = state.type.toTitle(),
@@ -199,7 +201,7 @@ private fun RecentRecordRow(
                     text = record.fileName,
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.Black,
-                    fontWeight = FontWeight.Black,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -237,7 +239,7 @@ private fun RecentRecordsError(
             text = "加载失败",
             style = MaterialTheme.typography.titleMedium,
             color = Color.Black,
-            fontWeight = FontWeight.Black
+            fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(

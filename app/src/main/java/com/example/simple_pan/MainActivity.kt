@@ -1,7 +1,9 @@
 package com.example.simple_pan
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.example.simple_pan.navigation.AppNavGraph
@@ -13,7 +15,10 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.WHITE, Color.WHITE),
+            navigationBarStyle = SystemBarStyle.light(Color.WHITE, Color.WHITE)
+        )
         // [语法] setContent { ... } 是尾随 lambda 写法，类似 Java 里把一个回调对象传给 setContent。
         // [设计] 为什么这样写：Compose 根节点只挂主题和导航图，后续新增页面时不需要反复改 Activity。
         setContent {

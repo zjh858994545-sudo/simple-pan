@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+internal val WukongTopBarHeight = 72.dp
+internal val WukongTopBarContentTopPadding = 18.dp
+internal val WukongTopTitleFontSize = 20.sp
+internal val WukongTopTitleLineHeight = 25.sp
 
 // [设计] 为什么这样写：截图里的网盘没有底部 Tab，而是在顶部用“网盘 / 文件”切换；抽成公共组件保证首页和文件页一致。
 @Composable
@@ -41,46 +48,53 @@ fun WukongTopTabs(
     onFileClick: () -> Unit,
     onBackClick: () -> Unit,
     onTransferClick: () -> Unit,
-    onSearchClick: () -> Unit
+    onSearchClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(WukongTopBarHeight)
     ) {
-        WukongTopIconButton(
-            modifier = Modifier.align(Alignment.CenterStart),
-            text = "<",
-            onClick = onBackClick
-        )
-        Row(
-            modifier = Modifier.align(Alignment.Center),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            WukongTopTabText(
-                text = "网盘",
-                selected = selectedTab == WukongTopTab.Pan,
-                onClick = onPanClick
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            WukongTopTabText(
-                text = "文件",
-                selected = selectedTab == WukongTopTab.File,
-                onClick = onFileClick
-            )
-        }
-        Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = WukongTopBarContentTopPadding)
         ) {
             WukongTopIconButton(
-                text = "⇅",
-                onClick = onTransferClick
+                modifier = Modifier.align(Alignment.CenterStart),
+                text = "<",
+                onClick = onBackClick
             )
-            WukongTopIconButton(
-                text = "⌕",
-                onClick = onSearchClick
-            )
+            Row(
+                modifier = Modifier.align(Alignment.Center),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WukongTopTabText(
+                    text = "网盘",
+                    selected = selectedTab == WukongTopTab.Pan,
+                    onClick = onPanClick
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                WukongTopTabText(
+                    text = "文件",
+                    selected = selectedTab == WukongTopTab.File,
+                    onClick = onFileClick
+                )
+            }
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WukongTopIconButton(
+                    text = "⇅",
+                    onClick = onTransferClick
+                )
+                WukongTopIconButton(
+                    text = "⌕",
+                    onClick = onSearchClick
+                )
+            }
         }
     }
 }
@@ -92,12 +106,19 @@ private fun WukongTopTabText(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    TextButton(onClick = onClick) {
+    TextButton(
+        modifier = Modifier.height(42.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        onClick = onClick
+    ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontSize = WukongTopTitleFontSize,
+                lineHeight = WukongTopTitleLineHeight
+            ),
             color = if (selected) Color.Black else Color(0xFF8A8A8A),
-            fontWeight = if (selected) FontWeight.Black else FontWeight.Normal
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -110,7 +131,7 @@ fun WukongTopIconButton(
     modifier: Modifier = Modifier
 ) {
     TextButton(
-        modifier = modifier.size(48.dp),
+        modifier = modifier.size(42.dp),
         onClick = onClick
     ) {
         when (text) {
@@ -121,7 +142,7 @@ fun WukongTopIconButton(
                 text = text,
                 style = MaterialTheme.typography.headlineMedium,
                 color = Color.Black,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center
             )
         }
@@ -132,7 +153,7 @@ fun WukongTopIconButton(
 private fun WukongBackGlyph() {
     Canvas(
         modifier = Modifier
-            .size(30.dp)
+            .size(26.dp)
     ) {
         val stroke = size.width * 0.12f
         drawLine(
@@ -156,7 +177,7 @@ private fun WukongBackGlyph() {
 private fun WukongSearchGlyph() {
     Canvas(
         modifier = Modifier
-            .size(32.dp)
+            .size(28.dp)
     ) {
         val stroke = size.width * 0.11f
         drawCircle(
@@ -179,7 +200,7 @@ private fun WukongSearchGlyph() {
 private fun WukongTransferGlyph() {
     Canvas(
         modifier = Modifier
-            .size(32.dp)
+            .size(28.dp)
     ) {
         val stroke = size.width * 0.09f
         drawCircle(
@@ -232,36 +253,45 @@ fun WukongTitleTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(WukongTopBarHeight)
     ) {
-        WukongTopIconButton(
-            modifier = Modifier.align(Alignment.CenterStart),
-            text = "<",
-            onClick = onBackClick
-        )
-        Text(
-            modifier = Modifier.align(Alignment.Center),
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.Black,
-            fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center
-        )
-        Row(
-            modifier = Modifier.align(Alignment.CenterEnd),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = WukongTopBarContentTopPadding)
         ) {
-            if (showTransferButton) {
-                WukongTopIconButton(
-                    text = "⇅",
-                    onClick = onTransferClick
-                )
-            }
-            if (showSearchButton) {
-                WukongTopIconButton(
-                    text = "⌕",
-                    onClick = onSearchClick
-                )
+            WukongTopIconButton(
+                modifier = Modifier.align(Alignment.CenterStart),
+                text = "<",
+                onClick = onBackClick
+            )
+            Text(
+                modifier = Modifier.align(Alignment.Center),
+                text = title,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = WukongTopTitleFontSize,
+                    lineHeight = WukongTopTitleLineHeight
+                ),
+                color = Color.Black,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (showTransferButton) {
+                    WukongTopIconButton(
+                        text = "⇅",
+                        onClick = onTransferClick
+                    )
+                }
+                if (showSearchButton) {
+                    WukongTopIconButton(
+                        text = "⌕",
+                        onClick = onSearchClick
+                    )
+                }
             }
         }
     }
@@ -278,27 +308,30 @@ fun WukongSegmentedTabs(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = Color(0xFFF0F0F0),
-        shape = RoundedCornerShape(28.dp)
+        shape = RoundedCornerShape(26.dp)
     ) {
         Row(
-            modifier = Modifier.padding(4.dp),
+            modifier = Modifier.padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             for ((index, item) in items.withIndex()) {
                 Surface(
                     modifier = Modifier.weight(1f),
                     color = if (index == selectedIndex) Color.White else Color.Transparent,
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(23.dp),
                     shadowElevation = if (index == selectedIndex) 1.dp else 0.dp,
                     onClick = { onSelected(index) }
                 ) {
                     Text(
-                        modifier = Modifier.padding(vertical = 12.dp),
+                        modifier = Modifier.padding(vertical = 8.dp),
                         text = item,
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 17.sp,
+                            lineHeight = 21.sp
+                        ),
                         color = if (index == selectedIndex) Color.Black else Color(0xFF777777),
-                        fontWeight = if (index == selectedIndex) FontWeight.Black else FontWeight.Normal
+                        fontWeight = if (index == selectedIndex) FontWeight.Medium else FontWeight.Normal
                     )
                 }
             }
@@ -423,7 +456,7 @@ fun WukongPlusButton(
             Text(
                 text = "+",
                 style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 color = Color.Black
             )
         }

@@ -3,6 +3,7 @@ package com.example.simple_pan.ui.transfer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +40,11 @@ import com.example.simple_pan.ui.component.WukongEmptyState
 import com.example.simple_pan.ui.component.WukongFileTypeIcon
 import com.example.simple_pan.ui.component.WukongPageBackground
 import com.example.simple_pan.ui.component.WukongSegmentedTabs
+import com.example.simple_pan.ui.component.WukongTopBarContentTopPadding
+import com.example.simple_pan.ui.component.WukongTopBarHeight
+import com.example.simple_pan.ui.component.WukongTopIconButton
+import com.example.simple_pan.ui.component.WukongTopTitleFontSize
+import com.example.simple_pan.ui.component.WukongTopTitleLineHeight
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -87,7 +93,7 @@ private fun TransferListContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             TransferHeader(
                 selectedDirection = state.selectedDirection,
@@ -117,37 +123,41 @@ private fun TransferHeader(
     onSettingsClick: () -> Unit,
     onDirectionChange: (TransferDirection) -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(WukongTopBarHeight)
     ) {
-        TextButton(onClick = onBackClick) {
-            Text(
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = WukongTopBarContentTopPadding)
+        ) {
+            WukongTopIconButton(
+                modifier = Modifier.align(Alignment.CenterStart),
                 text = "<",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.Black
+                onClick = onBackClick
             )
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        TransferTopTabText(
-            text = "上传",
-            selected = selectedDirection == TransferDirection.Upload,
-            onClick = { onDirectionChange(TransferDirection.Upload) }
-        )
-        Spacer(modifier = Modifier.size(width = 28.dp, height = 1.dp))
-        TransferTopTabText(
-            text = "下载",
-            selected = selectedDirection == TransferDirection.Download,
-            onClick = { onDirectionChange(TransferDirection.Download) }
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        TextButton(onClick = onSettingsClick) {
-            Text(
+            Row(
+                modifier = Modifier.align(Alignment.Center),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TransferTopTabText(
+                    text = "上传",
+                    selected = selectedDirection == TransferDirection.Upload,
+                    onClick = { onDirectionChange(TransferDirection.Upload) }
+                )
+                Spacer(modifier = Modifier.size(width = 28.dp, height = 1.dp))
+                TransferTopTabText(
+                    text = "下载",
+                    selected = selectedDirection == TransferDirection.Download,
+                    onClick = { onDirectionChange(TransferDirection.Download) }
+                )
+            }
+            WukongTopIconButton(
+                modifier = Modifier.align(Alignment.CenterEnd),
                 text = "⚙",
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.Black
+                onClick = onSettingsClick
             )
         }
     }
@@ -159,12 +169,19 @@ private fun TransferTopTabText(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    TextButton(onClick = onClick) {
+    TextButton(
+        modifier = Modifier.height(42.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        onClick = onClick
+    ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontSize = WukongTopTitleFontSize,
+                lineHeight = WukongTopTitleLineHeight
+            ),
             color = if (selected) Color.Black else Color(0xFF8F8F8F),
-            fontWeight = if (selected) FontWeight.Black else FontWeight.Normal
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

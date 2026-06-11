@@ -13,8 +13,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,16 +26,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,6 +75,9 @@ import com.example.simple_pan.ui.component.WukongSegmentedTabs
 import com.example.simple_pan.ui.component.WukongTopTab
 import com.example.simple_pan.ui.component.WukongTopTabs
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // [设计] 为什么这样写：Screen 只负责连接 ViewModel 和纯 UI 内容，数据来源仍然是 Room -> Repository -> ViewModel -> State。
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,6 +156,7 @@ fun FileListScreen(
 
     // [设计] 为什么这样写：Scaffold 只承载 SnackbarHost，不改变文件列表的数据来源；上传提示不会覆盖或替换列表内容。
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         }
@@ -314,7 +319,7 @@ private fun FileListContent(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 14.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 WukongTopTabs(
                     selectedTab = WukongTopTab.File,
@@ -344,9 +349,9 @@ private fun FileListContent(
                     selectedFilter = state.filter,
                     onFilterChange = onFilterChange
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 FileSortSummary(sortType = state.sortType)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // [设计] 为什么这样写：列表区域用 weight 占据剩余空间，管理态底部操作栏才能稳定固定在底部，不会被 LazyColumn 撑出屏幕。
                 Box(modifier = Modifier.weight(1f)) {
@@ -478,22 +483,22 @@ private fun WukongUploadSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 28.dp, top = 28.dp, end = 28.dp, bottom = 18.dp)
+                .padding(start = 28.dp, top = 18.dp, end = 28.dp, bottom = 14.dp)
         ) {
             UploadSheetHeader(onDismiss = onDismiss)
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(18.dp))
             UploadOptionGrid(
                 onPickFile = onPickFile,
                 onCreateFolder = onCreateFolder
             )
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             Text(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 text = "网盘隐私政策  |  反馈与建议",
                 style = MaterialTheme.typography.titleSmall,
                 color = Color(0xFF4A4A4A)
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }
@@ -504,7 +509,7 @@ private fun UploadSheetHeader(onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(74.dp)
+            .height(62.dp)
     ) {
         Column(
             modifier = Modifier
@@ -516,7 +521,7 @@ private fun UploadSheetHeader(onDismiss: () -> Unit) {
                 text = "上传文件",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.Black,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -533,14 +538,14 @@ private fun UploadSheetHeader(onDismiss: () -> Unit) {
         TextButton(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(48.dp),
+                .size(44.dp),
             onClick = onDismiss
         ) {
             Text(
                 text = "×",
                 style = MaterialTheme.typography.headlineMedium,
                 color = Color.Black,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.Bold
             )
         }
     }
@@ -552,7 +557,7 @@ private fun UploadOptionGrid(
     onPickFile: (Array<String>) -> Unit,
     onCreateFolder: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -560,32 +565,28 @@ private fun UploadOptionGrid(
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "照片",
-                iconText = "图",
-                color = Color(0xFFF8B63C)
+                iconType = FileType.Image
             ) {
                 onPickFile(arrayOf("image/*"))
             }
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "视频",
-                iconText = "视",
-                color = Color(0xFF8B5CF6)
+                iconType = FileType.Video
             ) {
                 onPickFile(arrayOf("video/*"))
             }
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "音频",
-                iconText = "音",
-                color = Color(0xFFF35D72)
+                iconType = FileType.Audio
             ) {
                 onPickFile(arrayOf("audio/*"))
             }
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "压缩包",
-                iconText = "压",
-                color = Color(0xFF7C6BE8)
+                iconType = FileType.Other
             ) {
                 onPickFile(arrayOf("application/zip", "application/x-zip-compressed", "application/x-rar-compressed"))
             }
@@ -597,16 +598,14 @@ private fun UploadOptionGrid(
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "文档",
-                iconText = "文",
-                color = Color(0xFF58C978)
+                iconType = FileType.Txt
             ) {
                 onPickFile(arrayOf("text/*", "application/pdf", "application/msword"))
             }
             UploadOptionItem(
                 modifier = Modifier.weight(1f),
                 label = "新建文件夹",
-                iconText = "+",
-                color = Color(0xFF6D83F2),
+                iconType = null,
                 onClick = onCreateFolder
             )
             Spacer(modifier = Modifier.weight(1f))
@@ -620,8 +619,7 @@ private fun UploadOptionGrid(
 private fun UploadOptionItem(
     modifier: Modifier = Modifier,
     label: String,
-    iconText: String,
-    color: Color,
+    iconType: FileType?,
     onClick: () -> Unit
 ) {
     Surface(
@@ -633,29 +631,42 @@ private fun UploadOptionItem(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                modifier = Modifier.size(60.dp),
-                color = color,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = iconText,
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black
-                    )
-                }
+            if (iconType == null) {
+                NewFolderUploadIcon()
+            } else {
+                WukongFileTypeIcon(
+                    fileType = iconType,
+                    size = 54.dp
+                )
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 text = label,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = Color.Black,
                 textAlign = TextAlign.Center,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// [设计] 上传弹窗里的新建文件夹入口不是普通文件类型，所以单独做一个蓝色加号图标。
+@Composable
+private fun NewFolderUploadIcon() {
+    Surface(
+        modifier = Modifier.size(54.dp),
+        color = Color(0xFF6D83F2),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(13.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = "+",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
             )
         }
     }
@@ -1182,7 +1193,10 @@ private fun FileFilterBar(
 private fun FileSortSummary(sortType: FileSortType) {
     Text(
         text = "按综合排序",
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontSize = 15.sp,
+            lineHeight = 19.sp
+        ),
         color = Color.Black
     )
 }
@@ -1351,7 +1365,8 @@ private fun FileListItems(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        contentPadding = PaddingValues(bottom = 96.dp)
     ) {
         // [语法] items 的 key = { file -> ... } 是尾随 lambda，file 是显式命名参数，类似 Java 回调里的参数名。
         items(
@@ -1401,48 +1416,88 @@ private fun FileRow(
 
     Surface(
         modifier = rowModifier.fillMaxWidth(),
-        color = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        shape = MaterialTheme.shapes.small
+        color = if (isManageMode && isSelected) Color(0xFFEFF2FF) else Color.Transparent
     ) {
-        ListItem(
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            leadingContent = {
-                WukongFileTypeIcon(fileType = file.type)
-            },
-            headlineContent = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 60.dp)
+                .padding(vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WukongFileTypeIcon(
+                fileType = file.type,
+                size = 44.dp
+            )
+            Spacer(modifier = Modifier.width(13.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = file.name,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp
+                    ),
+                    color = Color.Black,
                     fontWeight = FontWeight.SemiBold
                 )
-            },
-            supportingContent = {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "${file.type.toDisplayName()} · ${file.sizeBytes.toSizeText()}",
+                    text = file.toFileRowSubtitle(),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp
+                    ),
+                    color = Color(0xFF8C8C8C)
                 )
-            },
-            trailingContent = if (isManageMode) {
-                {
-                    // [设计] 为什么这样写：管理态用系统 Checkbox 表达二元选择，视觉语义明确；状态仍由 selectedFileIds 驱动，避免控件自己记状态。
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = {
-                            onToggleFileSelection(file)
-                        }
-                    )
-                }
-            } else {
-                null
             }
-        )
+            if (isManageMode) {
+                Spacer(modifier = Modifier.width(9.dp))
+                FileSelectionCircle(isSelected = isSelected)
+            }
+        }
     }
+}
+
+// [设计] 参考悟空文件列表，右侧不再显示“进入/打开”文字，而是用浅灰圆圈表达可被管理选择。
+@Composable
+private fun FileSelectionCircle(isSelected: Boolean) {
+    Surface(
+        modifier = Modifier.size(22.dp),
+        color = if (isSelected) Color.Black else Color.Transparent,
+        shape = CircleShape,
+        border = BorderStroke(
+            width = 2.dp,
+            color = if (isSelected) Color.Black else Color(0xFFD8D8D8)
+        )
+    ) {
+        if (isSelected) {
+            Box(contentAlignment = Alignment.Center) {
+                Surface(
+                    modifier = Modifier.size(8.dp),
+                    color = Color.White,
+                    shape = CircleShape
+                ) {}
+            }
+        }
+    }
+}
+
+// [设计] 文件列表第二行优先展示时间信息，让列表密度和参考图一致；文件夹不强行展示 0 B。
+private fun CloudFile.toFileRowSubtitle(): String {
+    val timeText = updatedAt.toFileRowTime()
+    return if (type == FileType.Folder) {
+        timeText
+    } else {
+        "$timeText | ${sizeBytes.toSizeText()}"
+    }
+}
+
+private fun Long.toFileRowTime(): String {
+    return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(this))
 }
 
 // [语法] 这是扩展函数，相当于 Java 静态工具方法 FileTypeDisplay.toDisplayName(fileType)。

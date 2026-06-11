@@ -2,6 +2,7 @@ package com.example.simple_pan.navigation
 
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -60,6 +61,7 @@ fun AppNavGraph() {
     )
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
         // NavHost放在Scaffold内容区，自动获得底部栏和系统栏的间距避让

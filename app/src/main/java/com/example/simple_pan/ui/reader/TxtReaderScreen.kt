@@ -1,5 +1,6 @@
 package com.example.simple_pan.ui.reader
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -46,8 +47,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.simple_pan.ui.component.WukongTopBarContentTopPadding
+import com.example.simple_pan.ui.component.WukongTopBarHeight
+import com.example.simple_pan.ui.component.WukongTopIconButton
+import com.example.simple_pan.ui.component.WukongTopTitleFontSize
+import com.example.simple_pan.ui.component.WukongTopTitleLineHeight
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import timber.log.Timber
+
+private const val TXT_READER_PERF_TAG = "TxtReaderPerf"
 
 // [设计] 为什么这样写：阅读器页面只连接路由参数、ViewModel State 和测量分页 UI；磁盘读取仍交给 UseCase，真实分页则依赖 Compose 文本测量。
 @Composable
@@ -161,7 +170,7 @@ private fun TxtReaderContent(
                 onDecreaseFont = { onChangeFontSize(-1) },
                 onIncreaseFont = { onChangeFontSize(1) }
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Box(modifier = Modifier.weight(1f)) {
                 TxtReaderPageFrame(
                     modifier = Modifier.fillMaxSize(),
@@ -210,55 +219,63 @@ private fun TxtReaderHeader(
     onDecreaseFont: () -> Unit,
     onIncreaseFont: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(WukongTopBarHeight)
     ) {
-        TextButton(onClick = onBackClick) {
-            Text(
-                text = "<",
-                color = ReaderTextColor,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Black
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = WukongTopBarContentTopPadding)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WukongTopIconButton(
+                    text = "<",
+                    onClick = onBackClick
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = ReaderTextColor,
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontSize = WukongTopTitleFontSize,
+                            lineHeight = WukongTopTitleLineHeight
+                        ),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = if (state.pageCount == 0) {
+                            "文档阅读器"
+                        } else {
+                            "第 ${state.currentPageNumber} 页，共 ${state.pageCount} 页 · ${state.readingPercent}%"
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = ReaderSecondaryTextColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                ReaderRoundTextButton(
+                    text = "A-",
+                    enabled = state.canDecreaseFontSize && !state.isLoading,
+                    onClick = onDecreaseFont
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                ReaderRoundTextButton(
+                    text = "A+",
+                    enabled = state.canIncreaseFontSize && !state.isLoading,
+                    onClick = onIncreaseFont
+                )
+            }
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = ReaderTextColor,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                text = if (state.pageCount == 0) {
-                    "文档阅读器"
-                } else {
-                    "第 ${state.currentPageNumber} 页，共 ${state.pageCount} 页 · ${state.readingPercent}%"
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = ReaderSecondaryTextColor,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-        ReaderRoundTextButton(
-            text = "A-",
-            enabled = state.canDecreaseFontSize && !state.isLoading,
-            onClick = onDecreaseFont
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        ReaderRoundTextButton(
-            text = "A+",
-            enabled = state.canIncreaseFontSize && !state.isLoading,
-            onClick = onIncreaseFont
-        )
     }
 }
-
 @Composable
 private fun ReaderRoundTextButton(
     text: String,
@@ -327,12 +344,30 @@ private fun TxtReaderPageFrame(
                     pageHeightPx > 0 &&
                     state.errorMessage == null
                 ) {
+                    val paginateStartMs = SystemClock.elapsedRealtime()
                     val pages = paginateMeasuredText(
                         content = state.content,
                         textMeasurer = textMeasurer,
                         textStyle = textStyle,
                         maxWidthPx = pageWidthPx,
                         maxHeightPx = pageHeightPx
+                    )
+                    val paginateCostMs = SystemClock.elapsedRealtime() - paginateStartMs
+                    val averageCharsPerPage = if (pages.isEmpty()) {
+                        0
+                    } else {
+                        state.content.length / pages.size
+                    }
+                    Timber.tag(TXT_READER_PERF_TAG).d(
+                        "paginate success generation=%d chars=%d pages=%d avgCharsPerPage=%d costMs=%d fontSizeSp=%d pageWidthPx=%d pageHeightPx=%d",
+                        generation,
+                        state.content.length,
+                        pages.size,
+                        averageCharsPerPage,
+                        paginateCostMs,
+                        state.fontSizeSp,
+                        pageWidthPx,
+                        pageHeightPx
                     )
                     onMeasuredPages(generation, pages)
                 }

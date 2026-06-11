@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +27,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.simple_pan.domain.model.RecentRecord
@@ -95,6 +97,7 @@ fun PanHomeScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
         }
@@ -152,7 +155,7 @@ private fun PanHomeContent(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                        .padding(vertical = 12.dp)
                 ) {
                     WukongTopTabs(
                         selectedTab = WukongTopTab.Pan,
@@ -160,20 +163,23 @@ private fun PanHomeContent(
                         onFileClick = onOpenFiles,
                         onBackClick = {},
                         onTransferClick = onOpenTransfer,
-                        onSearchClick = onOpenSearch
+                        onSearchClick = onOpenSearch,
+                        modifier = Modifier.padding(horizontal = 20.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    PanProfileCard(
-                        state = state,
-                        onOpenSpaceManagement = onOpenSpaceManagement,
-                        onShowSignInDialog = {
-                            isSignInDialogVisible = true
-                        },
-                        onOpenMySubscription = onOpenMySubscription,
-                        onOpenMyShare = onOpenMyShare,
-                        onOpenCloudCollection = onOpenCloudCollection
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                        PanProfileCard(
+                            state = state,
+                            onOpenSpaceManagement = onOpenSpaceManagement,
+                            onShowSignInDialog = {
+                                isSignInDialogVisible = true
+                            },
+                            onOpenMySubscription = onOpenMySubscription,
+                            onOpenMyShare = onOpenMyShare,
+                            onOpenCloudCollection = onOpenCloudCollection
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                     RecentPanel(
                         title = "最近转存",
                         emptyText = "暂无转存记录",
@@ -181,7 +187,7 @@ private fun PanHomeContent(
                         onAllClick = onOpenRecentTransfer,
                         onRecordClick = onRecentRecordClick
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     RecentPanel(
                         title = "最近浏览",
                         emptyText = "暂无浏览记录",
@@ -260,22 +266,22 @@ private fun PanProfileCard(
     onOpenMyShare: () -> Unit,
     onOpenCloudCollection: () -> Unit
 ) {
-    val totalBytes = 10L * 1024L * 1024L * 1024L
+    val totalBytes = 1024L * 1024L * 1024L * 1024L
     val progress = (state.usedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 18.dp),
+                .padding(top = 12.dp),
             color = Color.White,
-            shape = RoundedCornerShape(26.dp),
+            shape = RoundedCornerShape(24.dp),
             border = BorderStroke(1.dp, Color(0xFFF0F0F0))
         ) {
-            Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        modifier = Modifier.size(72.dp),
+                        modifier = Modifier.size(48.dp),
                         color = Color(0xFF202020),
                         shape = CircleShape
                     ) {
@@ -283,45 +289,56 @@ private fun PanProfileCard(
                             Text(
                                 text = "SP",
                                 color = Color.White,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 20.sp,
+                                    lineHeight = 23.sp
+                                ),
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
                     Column(
                         modifier = Modifier
-                            .weight(1f)
                             .padding(start = 18.dp)
+                            .width(136.dp)
                     ) {
                         Text(
-                            text = "已用空间：${state.usedBytes.toSizeText()}/10G",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "已用空间：${state.usedBytes.toSizeText()}/1T",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            ),
                             color = Color.Black,
-                            fontWeight = FontWeight.Black,
+                            fontWeight = FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(5.dp))
                         LinearProgressIndicator(
                             progress = { progress },
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color.Black,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                            color = Color(0xFF347DFF),
                             trackColor = Color(0xFFEDEDED)
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Surface(
                             color = Color.Transparent,
                             onClick = onOpenSpaceManagement
                         ) {
                             Text(
                                 text = "管理空间 >",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp
+                                ),
                                 color = Color(0xFF666666)
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -352,18 +369,40 @@ private fun PanProfileCard(
         Surface(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(end = 4.dp),
+                .padding(end = 8.dp),
             color = Color(0xFFFFF19A),
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp),
             onClick = onShowSignInDialog
         ) {
-            Text(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                text = "今日签到",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.Black,
-                fontWeight = FontWeight.Black
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(20.dp),
+                    color = Color(0xFFF6C94B),
+                    shape = RoundedCornerShape(9.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "✓",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(
+                    text = "今日签到",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp
+                    ),
+                    color = Color.Black,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
@@ -384,18 +423,24 @@ private fun PanStatItem(
         Column(horizontalAlignment = Alignment.Start) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp
+                ),
                 color = Color.Black,
-                fontWeight = FontWeight.Black,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "$value >",
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = 20.sp,
+                    lineHeight = 25.sp
+                ),
                 color = Color.Black,
-                fontWeight = FontWeight.Black
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
@@ -406,8 +451,8 @@ private fun PanStatItem(
 private fun VerticalDivider() {
     Surface(
         modifier = Modifier
-            .padding(horizontal = 10.dp)
-            .size(width = 1.dp, height = 72.dp),
+            .padding(horizontal = 6.dp)
+            .size(width = 1.dp, height = 52.dp),
         color = Color(0xFFE6E6E6)
     ) {}
 }
@@ -424,9 +469,9 @@ private fun RecentPanel(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.White,
-        shape = RoundedCornerShape(26.dp)
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -434,29 +479,42 @@ private fun RecentPanel(
                 Text(
                     modifier = Modifier.weight(1f),
                     text = title,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 21.sp
+                    ),
                     color = Color.Black,
-                    fontWeight = FontWeight.Black
+                    fontWeight = FontWeight.SemiBold
                 )
-                TextButton(onClick = onAllClick) {
+                Surface(
+                    color = Color.Transparent,
+                    onClick = onAllClick
+                ) {
                     Text(
+                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
                         text = "全部 >",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp
+                        ),
                         color = Color(0xFF666666)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             if (records.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(22.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = emptyText,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp
+                        ),
                         color = Color(0xFF9A9A9A)
                     )
                 }
@@ -486,19 +544,25 @@ private fun RecentHomeRow(
         color = Color.Transparent,
         onClick = onClick
     ) {
-        Column(modifier = Modifier.padding(vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(vertical = 7.dp)) {
         Text(
             text = record.fileName,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 17.sp,
+                lineHeight = 22.sp
+            ),
             color = Color.Black,
-            fontWeight = FontWeight.Black,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = "${record.actionText()} · ${record.timestamp.toTimeLabel()}",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 14.sp,
+                lineHeight = 19.sp
+            ),
             color = Color(0xFF7A7A7A),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -526,9 +590,9 @@ private fun Long.toSizeText(): String {
     val kb = 1024L
     val mb = kb * 1024L
     return when {
-        this >= mb -> "${this / mb} MB"
-        this >= kb -> "${this / kb} KB"
-        else -> "$this B"
+        this >= mb -> "${this / mb}MB"
+        this >= kb -> "${this / kb}KB"
+        else -> "${this}B"
     }
 }
 
